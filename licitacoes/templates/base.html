@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Agenda de Licitações{% endblock %} — {{ nome_orgao }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+</head>
+<body>
+{% if g.usuario %}
+<header class="topo">
+  <a class="marca" href="{{ url_for('agenda.painel') }}">Agenda de Licitações<small>{{ nome_orgao }}</small></a>
+  <nav>
+    {% if not g.usuario.trocar_senha %}
+    <a href="{{ url_for('agenda.painel') }}">Painel</a>
+    <a href="{{ url_for('agenda.calendario') }}">Calendário</a>
+    <a href="{{ url_for('agenda.lista') }}">Licitações</a>
+    {% if pode('criar') %}<a href="{{ url_for('agenda.nova') }}">+ Nova</a>{% endif %}
+    {% if pode('usuarios') %}<a href="{{ url_for('admin.usuarios') }}">Usuários</a>{% endif %}
+    {% if pode('auditoria') %}<a href="{{ url_for('admin.auditoria') }}">Auditoria</a>{% endif %}
+    {% endif %}
+  </nav>
+  <div class="usuario">
+    <span>{{ g.usuario.nome }} <em class="perfil">{{ PERFIS[g.usuario.perfil] }}</em></span>
+    <a href="{{ url_for('auth.trocar_senha') }}">Senha</a>
+    <form method="post" action="{{ url_for('auth.logout') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="link">Sair</button>
+    </form>
+  </div>
+</header>
+{% endif %}
+<main>
+  {% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
+    <div class="aviso aviso-{{ categoria }}">{{ mensagem }}</div>
+  {% endfor %}
+  {% block conteudo %}{% endblock %}
+</main>
+</body>
+</html>

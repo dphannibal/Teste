@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block conteudo %}
+<h1>{{ titulo }}</h1>
+<form method="post" class="cartao formulario">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <div class="grade">
+    <label>Nº do processo *<input name="numero_processo" required value="{{ dados.numero_processo or '' }}" placeholder="Ex.: 2026.001234"></label>
+    <label>Nº do edital<input name="numero_edital" value="{{ dados.numero_edital or '' }}" placeholder="Ex.: PE 015/2026"></label>
+    <label>Modalidade *
+      <select name="modalidade" required>
+        <option value="">Selecione…</option>
+        {% for m in modalidades %}<option {% if dados.modalidade == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Situação *
+      <select name="status" required>
+        {% for s in STATUS %}<option {% if dados.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Data e hora da sessão *<input type="datetime-local" name="data_sessao" required value="{{ dados.data_sessao or '' }}"></label>
+    <label>Local / plataforma<input name="local" value="{{ dados.local or '' }}" placeholder="Ex.: Compras.gov.br, Sala de licitações"></label>
+    <label>Responsável (pregoeiro / agente de contratação)
+      <select name="responsavel_id">
+        <option value="">—</option>
+        {% for r in responsaveis %}<option value="{{ r.id }}" {% if dados.responsavel_id|string == r.id|string %}selected{% endif %}>{{ r.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Valor estimado (R$)<input name="valor_estimado" inputmode="decimal" placeholder="Ex.: 150.000,00"
+      value="{% if dados.valor_estimado is number %}{{ '%.2f'|format(dados.valor_estimado)|replace('.', ',') }}{% else %}{{ dados.valor_estimado or '' }}{% endif %}"></label>
+  </div>
+  <label>Objeto *<textarea name="objeto" rows="3" required>{{ dados.objeto or '' }}</textarea></label>
+  <label>Observações<textarea name="observacoes" rows="3">{{ dados.observacoes or '' }}</textarea></label>
+  <div class="acoes">
+    <button class="primario">Salvar</button>
+    <a href="{{ request.referrer or url_for('agenda.lista') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import selo with context %}
+{% block titulo %}{{ lic.numero_processo }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>{{ lic.modalidade }} {{ lic.numero_edital or '' }} {{ selo(lic.status) }}</h1>
+  <div class="acoes">
+    {% if pode('editar') %}<a class="botao primario" href="{{ url_for('agenda.editar', id_=lic.id) }}">Editar</a>{% endif %}
+    {% if pode('excluir') %}
+    <form method="post" action="{{ url_for('agenda.excluir', id_=lic.id) }}" onsubmit="return confirm('Excluir definitivamente esta licitação?');">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="perigo">Excluir</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<section class="cartao">
+  <dl class="dados">
+    <dt>Nº do processo</dt><dd>{{ lic.numero_processo }}</dd>
+    <dt>Nº do edital</dt><dd>{{ lic.numero_edital or '—' }}</dd>
+    <dt>Data da sessão</dt><dd>{{ lic.data_sessao|data }}</dd>
+    <dt>Local / plataforma</dt><dd>{{ lic.local or '—' }}</dd>
+    <dt>Responsável</dt><dd>{{ lic.responsavel_nome or '—' }}</dd>
+    <dt>Valor estimado</dt><dd>{{ lic.valor_estimado|moeda }}</dd>
+    <dt>Objeto</dt><dd class="texto">{{ lic.objeto }}</dd>
+    <dt>Observações</dt><dd class="texto">{{ lic.observacoes or '—' }}</dd>
+  </dl>
+</section>
+
+<section class="cartao">
+  <h2>Histórico</h2>
+  {% if historico %}
+  <ul class="historico">
+    {% for h in historico %}
+      <li><time>{{ h.data|replace(' ', 'T')|data }}</time> <strong>{{ h.usuario_nome or 'Sistema' }}</strong> — {{ h.acao }}{% if h.detalhes %}<br><small>{{ h.detalhes }}</small>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="vazio">Sem registros.</p>{% endif %}
+</section>
+{% endblock %}

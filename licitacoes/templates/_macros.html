@@ -1,0 +1,27 @@
+{% macro selo(status) -%}
+  <span class="selo selo-{{ STATUS.get(status, 'cinza') }}">{{ status }}</span>
+{%- endmacro %}
+
+{% macro tabela(licitacoes, vazio='Nenhuma licitação encontrada.') -%}
+{% if licitacoes %}
+<div class="tabela-rolagem">
+<table>
+  <thead><tr><th>Sessão</th><th>Processo / Edital</th><th>Modalidade</th><th>Objeto</th><th>Responsável</th><th>Situação</th></tr></thead>
+  <tbody>
+  {% for l in licitacoes %}
+    <tr>
+      <td class="nowrap">{{ l.data_sessao|data }}</td>
+      <td><a href="{{ url_for('agenda.detalhe', id_=l.id) }}">{{ l.numero_processo }}</a>{% if l.numero_edital %}<br><small>{{ l.numero_edital }}</small>{% endif %}</td>
+      <td>{{ l.modalidade }}</td>
+      <td>{{ l.objeto|truncate(110) }}</td>
+      <td>{{ l.responsavel_nome or '—' }}</td>
+      <td>{{ selo(l.status) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="vazio">{{ vazio }}</p>
+{% endif %}
+{%- endmacro %}

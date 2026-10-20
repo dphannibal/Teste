@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import tabela, selo with context %}
+{% block titulo %}Painel{% endblock %}
+{% block conteudo %}
+<h1>Painel</h1>
+
+<section class="indicadores">
+  {% for status, cor in STATUS.items() if contagem.get(status) %}
+    <a class="indicador borda-{{ cor }}" href="{{ url_for('agenda.lista', status=status) }}">
+      <strong>{{ contagem[status] }}</strong><span>{{ status }}</span>
+    </a>
+  {% else %}
+    <p class="vazio">Nenhuma licitação cadastrada ainda.{% if pode('criar') %} <a href="{{ url_for('agenda.nova') }}">Cadastrar a primeira</a>.{% endif %}</p>
+  {% endfor %}
+</section>
+
+{% if sessoes_hoje %}
+<section class="cartao destaque">
+  <h2>Sessões de hoje</h2>
+  <ul class="hoje">
+  {% for l in sessoes_hoje %}
+    <li><strong>{{ l.data_sessao[11:16] }}</strong> — <a href="{{ url_for('agenda.detalhe', id_=l.id) }}">{{ l.modalidade }} {{ l.numero_edital or l.numero_processo }}</a>: {{ l.objeto|truncate(90) }}{% if l.local %} <small>({{ l.local }})</small>{% endif %}</li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="cartao">
+  <h2>Próximos 30 dias</h2>
+  {{ tabela(proximas, 'Nenhuma sessão agendada para os próximos 30 dias.') }}
+</section>
+
+{% if atrasadas %}
+<section class="cartao alerta">
+  <h2>Sessões passadas sem desfecho registrado</h2>
+  <p class="sutil">A data da sessão já passou, mas a situação continua em aberto. Atualize a situação destas licitações.</p>
+  {{ tabela(atrasadas) }}
+</section>
+{% endif %}
+{% endblock %}

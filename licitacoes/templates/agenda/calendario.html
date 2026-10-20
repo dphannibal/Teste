@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block titulo %}Calendário{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>{{ nome_mes }} de {{ ano }}</h1>
+  <div class="acoes">
+    <a class="botao" href="{{ url_for('agenda.calendario', ano=anterior.year, mes=anterior.month) }}">&larr; Anterior</a>
+    <a class="botao" href="{{ url_for('agenda.calendario') }}">Hoje</a>
+    <a class="botao" href="{{ url_for('agenda.calendario', ano=seguinte.year, mes=seguinte.month) }}">Próximo &rarr;</a>
+  </div>
+</div>
+<div class="tabela-rolagem">
+<table class="calendario">
+  <thead><tr>{% for d in ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'] %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for semana in semanas %}
+    <tr>
+    {% for dia in semana %}
+      <td class="{% if dia.month != mes %}fora{% endif %} {% if dia == hoje %}hoje{% endif %}">
+        <div class="numero">{{ dia.day }}</div>
+        {% for l in eventos.get(dia.isoformat(), []) %}
+          <a class="evento selo-{{ STATUS.get(l.status, 'cinza') }}" href="{{ url_for('agenda.detalhe', id_=l.id) }}"
+             title="{{ l.modalidade }} — {{ l.objeto }} ({{ l.status }})">
+            {{ l.data_sessao[11:16] }} {{ l.numero_edital or l.numero_processo }}
+          </a>
+        {% endfor %}
+      </td>
+    {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="legenda">{% for status, cor in STATUS.items() %}<span class="selo selo-{{ cor }}">{{ status }}</span> {% endfor %}</p>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block titulo %}Auditoria{% endblock %}
+{% block conteudo %}
+<h1>Auditoria</h1>
+<p class="sutil">Registro de todas as ações realizadas no sistema.</p>
+<div class="tabela-rolagem">
+<table>
+  <thead><tr><th>Data</th><th>Usuário</th><th>Ação</th><th>Referência</th><th>Detalhes</th></tr></thead>
+  <tbody>
+  {% for r in registros %}
+    <tr>
+      <td class="nowrap">{{ r.data|replace(' ', 'T')|data }}</td>
+      <td>{{ r.usuario_nome or 'Sistema' }}</td>
+      <td>{{ r.acao }}</td>
+      <td>{% if r.licitacao_id and r.numero_processo %}<a href="{{ url_for('agenda.detalhe', id_=r.licitacao_id) }}">{{ r.referencia }}</a>{% else %}{{ r.referencia or '—' }}{% endif %}</td>
+      <td>{{ r.detalhes or '' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="vazio">Nenhum registro.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div class="acoes paginacao">
+  {% if pagina > 1 %}<a class="botao" href="{{ url_for('admin.auditoria', pagina=pagina - 1) }}">&larr; Mais recentes</a>{% endif %}
+  {% if tem_mais %}<a class="botao" href="{{ url_for('admin.auditoria', pagina=pagina + 1) }}">Mais antigos &rarr;</a>{% endif %}
+</div>
+{% endblock %}
