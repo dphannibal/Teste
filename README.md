@@ -124,7 +124,33 @@ Quem tem a permissão de parâmetros (Administrador e Gestor, por padrão) alter
 
 Tudo fica registrado na auditoria.
 
-## Instalação em pasta compartilhada (recomendada)
+## Instalador para Windows (recomendado)
+
+O instalador `AgendaLicitacoes-Instalador-X.Y.Z.exe` já traz tudo embutido — **não é preciso
+instalar o Python**. Ele é gerado automaticamente pelo GitHub Actions a cada alteração:
+em **Actions → Instalador do Windows → (execução mais recente) → Artifacts**; versões
+marcadas com uma tag `vX.Y.Z` também ficam na página **Releases** do repositório.
+
+No computador que vai hospedar o sistema (fica ligado no expediente), execute o instalador
+como administrador. Ele:
+
+- instala o programa em `C:\AgendaLicitacoes` e guarda os dados em
+  `C:\ProgramData\AgendaLicitacoes`, acessível só a administradores;
+- **compartilha a pasta do programa** como `\\NOME-DO-COMPUTADOR\Licitacoes`, somente leitura,
+  com o atalho **“Abrir Agenda de Licitações”** para os demais usuários;
+- **libera a porta 8080** no firewall (redes privadas e de domínio);
+- faz o sistema **iniciar com o Windows**, mesmo sem ninguém logado;
+- mostra, no fim, a **senha temporária do usuário `admin`**.
+
+Cada opção pode ser desmarcada no assistente. Para atualizar, basta executar o instalador da
+nova versão (os dados são mantidos). A desinstalação (Painel de Controle → Programas)
+remove o programa, o compartilhamento, a regra do firewall e o início automático, mas
+**mantém os dados**. O registro do servidor fica em `C:\ProgramData\AgendaLicitacoes\servidor.log`.
+
+Como o instalador não tem assinatura digital, o Windows pode mostrar “O Windows protegeu o
+computador”: clique em **Mais informações → Executar assim mesmo**.
+
+## Instalação em pasta compartilhada (sem o instalador)
 
 O programa fica numa pasta compartilhada e roda **num único computador**, o que hospeda a
 pasta. Os demais usuários abrem o sistema **pela pasta compartilhada**, com dois cliques no
@@ -229,7 +255,9 @@ Estrutura:
 
 ```
 servidor.py              inicia o servidor (Waitress) e cria o atalho para os usuários
-Iniciar servidor.bat     inicia o servidor no Windows (pasta compartilhada)
+Iniciar servidor.bat     inicia o servidor no Windows (pasta compartilhada, sem instalador)
+instalador/              empacotamento (PyInstaller), instalador (Inno Setup) e configuração
+                         do Windows; gerados por .github/workflows/instalador.yml
 licitacoes/
   __init__.py            criação da aplicação, CSRF, filtros, comandos
   perfis.py              perfis e valores padrão dos parâmetros

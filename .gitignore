@@ -7,3 +7,7 @@ instance/
 
 # Atalho gerado pelo servidor ao iniciar
 Abrir Agenda de Licitações.url
+
+# Empacotamento do instalador
+build/
+dist/

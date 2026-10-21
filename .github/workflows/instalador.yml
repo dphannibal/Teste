@@ -1,0 +1,95 @@
+# Gera o instalador do Windows: roda os testes, empacota o AgendaLicitacoes.exe
+# (PyInstaller), monta o instalador (Inno Setup) e o testa numa instalação silenciosa.
+# O instalador fica disponível em Actions > (execução) > Artifacts; ao criar uma tag
+# vX.Y.Z, ele também é publicado na página de versões (Releases) do repositório.
+name: Instalador do Windows
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pytest
+
+      - name: Testes
+        run: python -m pytest -q
+
+      - name: Versão
+        id: versao
+        run: |
+          $v = (python -c "import licitacoes; print(licitacoes.__version__)").Trim()
+          "versao=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Empacotar o AgendaLicitacoes.exe
+        run: pyinstaller --noconfirm --distpath dist --workpath build instalador/agenda.spec
+
+      - name: Testar o executável
+        run: |
+          $dados = Join-Path $env:RUNNER_TEMP "dados"
+          dist\AgendaLicitacoes\AgendaLicitacoes.exe --versao
+          dist\AgendaLicitacoes\AgendaLicitacoes.exe --preparar --dados $dados --senha-em "$env:RUNNER_TEMP\senha.txt"
+          if (-not (Test-Path "$dados\licitacoes.sqlite3")) { throw "Banco não foi criado" }
+          if (-not (Test-Path "$env:RUNNER_TEMP\senha.txt")) { throw "Senha do admin não foi gravada" }
+
+      - name: Montar o instalador (Inno Setup)
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DVersao=${{ steps.versao.outputs.versao }}" instalador\AgendaLicitacoes.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC falhou ($LASTEXITCODE)" }
+
+      - name: Testar instalação e desinstalação silenciosas
+        run: |
+          $setup = (Get-ChildItem dist\AgendaLicitacoes-Instalador-*.exe | Select-Object -First 1).FullName
+          Start-Process $setup -Wait -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", `
+            "/TASKS=iniciar,compartilhar,firewall", "/LOG=$env:RUNNER_TEMP\instalacao.log"
+          Get-Content "$env:ProgramData\AgendaLicitacoes\instalacao.log"
+          $ok = $false
+          foreach ($i in 1..30) {
+            try { if ((Invoke-WebRequest http://localhost:8080/login -UseBasicParsing).StatusCode -eq 200) { $ok = $true; break } } catch { }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $ok) { Get-Content "$env:ProgramData\AgendaLicitacoes\servidor.log" -ErrorAction SilentlyContinue; throw "O sistema não respondeu em http://localhost:8080" }
+          if (-not (Get-SmbShare -Name Licitacoes -ErrorAction SilentlyContinue)) { throw "Pasta não foi compartilhada" }
+          if (-not (Get-NetFirewallRule -DisplayName "Agenda de Licitacoes" -ErrorAction SilentlyContinue)) { throw "Regra do firewall não foi criada" }
+          if (-not (Test-Path "C:\AgendaLicitacoes\Abrir Agenda de Licitações.url")) { throw "Atalho dos usuários não foi criado" }
+          Write-Output "Instalação OK: sistema respondendo, pasta compartilhada, firewall e atalho."
+
+          Start-Process "C:\AgendaLicitacoes\unins000.exe" -Wait -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES"
+          Start-Sleep -Seconds 5
+          if (Get-ScheduledTask -TaskName "Agenda de Licitacoes" -ErrorAction SilentlyContinue) { throw "Tarefa não foi removida" }
+          if (Get-SmbShare -Name Licitacoes -ErrorAction SilentlyContinue) { throw "Compartilhamento não foi removido" }
+          if (-not (Test-Path "$env:ProgramData\AgendaLicitacoes\licitacoes.sqlite3")) { throw "Os dados deveriam ser mantidos" }
+          Write-Output "Desinstalação OK: configuração removida e dados mantidos."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AgendaLicitacoes-Instalador-${{ steps.versao.outputs.versao }}
+          path: dist/AgendaLicitacoes-Instalador-*.exe
+
+      - name: Publicar na página de versões
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/AgendaLicitacoes-Instalador-*.exe

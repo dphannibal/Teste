@@ -1,4 +1,5 @@
 """Agenda de Licitações — aplicação web para intranet."""
+__version__ = "1.1.0"
 import os
 import secrets
 from datetime import datetime

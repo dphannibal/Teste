@@ -3,6 +3,7 @@
 Uso:  python servidor.py                         (porta 8080 em todas as interfaces)
       python servidor.py --porta 80
       python servidor.py --dados "C:\\ProgramData\\AgendaLicitacoes"
+      AgendaLicitacoes.exe                       (versão instalada no Windows)
 
 Instalação em pasta compartilhada: o programa fica na pasta compartilhada e roda no
 computador que a hospeda. Ao iniciar, ele cria na própria pasta o atalho
@@ -12,13 +13,35 @@ na pasta indicada em --dados, que NÃO deve ser compartilhada.
 import argparse
 import os
 import socket
+import sys
 
 from waitress import serve
 
-from licitacoes import create_app, garantir_admin_inicial
+from licitacoes import __version__, create_app, garantir_admin_inicial
 
-PASTA_PROGRAMA = os.path.dirname(os.path.abspath(__file__))
+# Empacotado pelo instalador (PyInstaller), o programa é o AgendaLicitacoes.exe.
+EMPACOTADO = getattr(sys, "frozen", False)
+PASTA_PROGRAMA = os.path.dirname(os.path.abspath(sys.executable if EMPACOTADO else __file__))
 NOME_ATALHO = "Abrir Agenda de Licitações.url"
+# Pasta de dados padrão da versão instalada: fora da pasta do programa (compartilhada).
+DADOS_INSTALADO = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"),
+                               "AgendaLicitacoes")
+
+
+class _Duplicar:
+    """Escreve a saída na tela e no arquivo de registro (o serviço roda sem janela)."""
+
+    def __init__(self, *destinos):
+        self.destinos = [d for d in destinos if d is not None]
+
+    def write(self, texto):
+        for destino in self.destinos:
+            destino.write(texto)
+            destino.flush()
+
+    def flush(self):
+        for destino in self.destinos:
+            destino.flush()
 
 
 def enderecos_ipv4():
@@ -55,12 +78,32 @@ def main():
                                         "brasão (fora da pasta compartilhada)")
     parser.add_argument("--endereco", help="Endereço gravado no atalho (padrão: nome deste "
                                            "computador). Ex.: 192.168.0.10")
+    parser.add_argument("--log", help="Arquivo onde também gravar as mensagens do servidor")
+    parser.add_argument("--preparar", action="store_true",
+                        help="Só cria o banco, o administrador e o atalho, e encerra "
+                             "(usado pelo instalador)")
+    parser.add_argument("--senha-em", help="Com --preparar: arquivo onde gravar a senha "
+                                           "temporária do admin")
+    parser.add_argument("--versao", action="version",
+                        version=f"Agenda de Licitações {__version__}")
     args = parser.parse_args()
 
-    app = create_app({"PASTA_DADOS": args.dados} if args.dados else None)
+    dados_padrao = DADOS_INSTALADO if EMPACOTADO else None
+    pasta_dados = args.dados or os.environ.get("AGENDA_DADOS") or dados_padrao
+    app = create_app({"PASTA_DADOS": pasta_dados} if pasta_dados else None)
     dados = app.config["PASTA_DADOS"]
+    registro = args.log or (os.path.join(dados, "servidor.log") if EMPACOTADO else None)
+    if registro:
+        arquivo = open(registro, "a", encoding="utf-8")
+        sys.stdout = _Duplicar(sys.stdout, arquivo)
+        sys.stderr = _Duplicar(sys.stderr, arquivo)
+    print(f"Agenda de Licitações {__version__}")
+
     senha = garantir_admin_inicial(app)
-    if senha:
+    if senha and args.senha_em:
+        with open(args.senha_em, "w", encoding="utf-8") as saida:
+            saida.write(senha)
+    if senha and not args.senha_em:  # com --senha-em, a senha não vai para o registro
         print("=" * 64)
         print(" Primeiro uso: usuário administrador criado.")
         print(f"   login: admin   senha temporária: {senha}")
@@ -76,8 +119,16 @@ def main():
     except OSError as erro:
         print(f"Não foi possível criar o atalho na pasta do programa: {erro}")
 
+    if args.preparar:
+        print(f"Dados preparados em {dados}")
+        return
+
     print(f"Dados (banco, chave e brasão): {dados}")
-    if os.path.commonpath([os.path.abspath(dados), PASTA_PROGRAMA]) == PASTA_PROGRAMA:
+    try:
+        dentro = os.path.commonpath([os.path.abspath(dados), PASTA_PROGRAMA]) == PASTA_PROGRAMA
+    except ValueError:  # discos diferentes no Windows
+        dentro = False
+    if dentro:
         print("ATENÇÃO: a pasta de dados está dentro da pasta do programa. Se esta pasta for "
               "compartilhada, use --dados com uma pasta que não seja compartilhada.")
     print(f"Agenda de Licitações disponível em {url}")
