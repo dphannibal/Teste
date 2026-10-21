@@ -41,10 +41,18 @@ def remover():
         os.remove(caminho())
 
 
+def conteudo():
+    """Bytes do PNG. O arquivo é fechado logo após a leitura: no Windows, um arquivo
+    aberto não pode ser substituído nem apagado (troca ou remoção do brasão)."""
+    with open(caminho(), "rb") as arquivo:
+        return arquivo.read()
+
+
 def para_caber(largura_maxima, altura_maxima):
     """Brasão reduzido proporcionalmente para caber no espaço (nunca ampliado)."""
     if not existe():
         return None
-    imagem = Image.open(caminho()).convert("RGBA")
+    with Image.open(caminho()) as original:
+        imagem = original.convert("RGBA")
     imagem.thumbnail((largura_maxima, altura_maxima))
     return imagem

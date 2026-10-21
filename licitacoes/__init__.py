@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime
 
 import click
-from flask import Flask, abort, g, render_template, request, send_file, session, url_for
+from flask import Flask, Response, abort, g, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from . import brasao, db, parametros
@@ -52,7 +52,8 @@ def create_app(config=None):
     def imagem_brasao():
         if not brasao.existe():
             abort(404)
-        return send_file(brasao.caminho(), mimetype="image/png", max_age=86400)
+        return Response(brasao.conteudo(), mimetype="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
     with app.app_context():
         db.init_db()
