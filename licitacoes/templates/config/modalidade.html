@@ -11,7 +11,7 @@
     <label>Ordem<input type="number" name="ordem" value="{{ dados.ordem }}"></label>
   </div>
   <fieldset>
-    <legend>Objetos e critérios de julgamento cabíveis (definem o prazo mínimo legal)</legend>
+    <legend>Critérios de julgamento cabíveis (definem o prazo mínimo legal)</legend>
     {% set permitidos = (dados.prazos_permitidos or '').split(',') %}
     {% for k, p in prazos.items() %}
     <label class="opcao"><input type="checkbox" name="prazos_permitidos" value="{{ k }}" {% if k in permitidos %}checked{% endif %}>

@@ -45,7 +45,7 @@ ROTULOS = {
     **FUNCOES_EQUIPE,
     "valor_estimado": "Valor estimado",
     "status": "Situação",
-    "prazo_hipotese": "Prazo mínimo",
+    "prazo_hipotese": "Critério de julgamento",
     "observacoes": "Observações",
 }
 
@@ -141,7 +141,7 @@ def _ler_data(texto, com_hora):
 
 
 def prazos_da_modalidade(modalidade):
-    """Objetos/critérios de julgamento cabíveis na modalidade (definem o prazo mínimo)."""
+    """Critérios de julgamento cabíveis na modalidade (definem o prazo mínimo)."""
     permitidos = [p for p in (modalidade.get("prazos_permitidos") or "").split(",") if p in PRAZOS]
     return permitidos or [modalidade.get("prazo_padrao") or "nao_se_aplica"]
 
@@ -242,7 +242,7 @@ def _validar(form, atual=None):
         dados["prazo_hipotese"] = "nao_se_aplica"
     dados["prazo_hipotese"] = dados["prazo_hipotese"] or modalidade.get("prazo_padrao")
     if dados["prazo_hipotese"] not in prazos_da_modalidade(modalidade):
-        erros.append(f"O objeto/critério de julgamento escolhido não cabe na modalidade "
+        erros.append(f"O critério de julgamento escolhido não cabe na modalidade "
                      f"{modalidade['nome']}.")
         dados["prazo_hipotese"] = modalidade.get("prazo_padrao") or "nao_se_aplica"
 

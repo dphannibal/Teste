@@ -85,7 +85,7 @@ dos perfis** (o Administrador sempre tem tudo). Padrão inicial:
 - A data da sessão (no cadastro, na edição e nas remarcações) **não pode cair em sábado,
   domingo ou feriado**; em ponto facultativo, só com a confirmação de que haverá expediente.
 - **Prazo mínimo legal** (art. 55 da Lei 14.133/2021; dispensa: art. 75, § 3º; diálogo
-  competitivo: art. 32, § 1º, I): cada licitação informa o **objeto / critério de
+  competitivo: art. 32, § 1º, I): cada licitação informa o **critério de
   julgamento**, e as opções dependem da modalidade (ex.: pregão para bens — 8 dias úteis — ou
   serviços comuns — 10; concorrência com técnica e preço — 35). As opções de cada modalidade
   são configuráveis. A contagem começa no dia útil seguinte à divulgação (art. 183, § 1º, I)

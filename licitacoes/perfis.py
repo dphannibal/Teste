@@ -39,7 +39,7 @@ PERMISSOES_PADRAO = {
     "consulta": {"ver"},
 }
 
-# Objeto e critério de julgamento -> (descrição, prazo mínimo em dias úteis entre a
+# Critério de julgamento -> (descrição, prazo mínimo em dias úteis entre a
 # divulgação e a sessão, se a contagem inclui o próprio dia da divulgação).
 # Art. 55 da Lei 14.133/2021; dispensa: art. 75, § 3º; diálogo competitivo: art. 32, § 1º, I.
 PRAZOS = {
@@ -67,8 +67,8 @@ PREGAO = "bens_menor_preco,servicos_comuns"
 CONCORRENCIA = ("bens_menor_preco,bens_demais,servicos_comuns,servicos_especiais,integrada,"
                 "semi_integrada,tecnica")
 
-# (nome, sigla, cor, aberta com vigência anual, exige equipe, quem conduz, objeto/critério
-#  padrão, objetos/critérios cabíveis na modalidade)
+# (nome, sigla, cor, aberta com vigência anual, exige equipe, quem conduz, critério de
+#  julgamento padrão, critérios cabíveis na modalidade)
 MODALIDADES_PADRAO = [
     ("Pregão Eletrônico", "PE", "#1e7b3c", 0, 1, "Pregoeiro(a)", "bens_menor_preco", PREGAO),
     ("Pregão Presencial", "PP", "#b42318", 0, 1, "Pregoeiro(a)", "bens_menor_preco", PREGAO),

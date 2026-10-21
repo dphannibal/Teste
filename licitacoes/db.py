@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS modalidades (
     exige_equipe     INTEGER NOT NULL DEFAULT 1,
     rotulo_condutor  TEXT    NOT NULL DEFAULT 'Agente de contratação',
     prazo_padrao     TEXT    NOT NULL DEFAULT 'nao_se_aplica',  -- ver perfis.PRAZOS
-    prazos_permitidos TEXT   NOT NULL DEFAULT 'nao_se_aplica'   -- objetos/critérios cabíveis
+    prazos_permitidos TEXT   NOT NULL DEFAULT 'nao_se_aplica'   -- critérios de julgamento cabíveis
 );
 
 CREATE TABLE IF NOT EXISTS situacoes (
@@ -254,7 +254,7 @@ def _migrar_para_prazos(conn):
 
 
 def _migrar_para_recursos(conn):
-    """Objeto/critério por modalidade, situação "Em recurso", filtro do WhatsApp e
+    """Critério de julgamento por modalidade, situação "Em recurso", filtro do WhatsApp e
     ajustes nos feriados (terça de Carnaval e Dia do Servidor como feriado; emancipação de
     Três Rios em 14/12)."""
     for nome, *_, prazo, permitidos in perfis.MODALIDADES_PADRAO:

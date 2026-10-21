@@ -181,9 +181,9 @@ def modalidade(id_):
         if not dados["ordem"].lstrip("-").isdigit():
             erros.append("A ordem deve ser um número.")
         if not dados["prazos_permitidos"]:
-            erros.append("Marque ao menos um objeto/critério de julgamento cabível.")
+            erros.append("Marque ao menos um critério de julgamento cabível.")
         elif dados["prazo_padrao"] not in dados["prazos_permitidos"].split(","):
-            erros.append("O objeto/critério padrão precisa estar entre os cabíveis.")
+            erros.append("O critério de julgamento padrão precisa estar entre os cabíveis.")
         if em_uso and dados["credenciamento"] != atual["credenciamento"]:
             erros.append("Não é possível mudar o tipo (credenciamento ou com sessão) de uma "
                          "modalidade já usada em licitações.")
@@ -211,8 +211,8 @@ def modalidade(id_):
                 mudancas = [f"{rotulo}: {atual[c]} → {dados[c]}" for c, rotulo in (
                     ("nome", "Nome"), ("sigla", "Sigla"), ("cor", "Cor"), ("ativa", "Ativa"),
                     ("exige_equipe", "Exige equipe"), ("rotulo_condutor", "Condutor"),
-                    ("prazo_padrao", "Objeto/critério padrão"),
-                    ("prazos_permitidos", "Objetos/critérios cabíveis"))
+                    ("prazo_padrao", "Critério padrão"),
+                    ("prazos_permitidos", "Critérios cabíveis"))
                     if str(atual[c]) != str(dados[c])]
                 registrar("Alteração de modalidade", referencia=dados["nome"],
                           detalhes="; ".join(mudancas) or None)
