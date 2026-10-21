@@ -42,7 +42,7 @@ function Executar([string]$Programa, [string[]]$Argumentos) {
     if ($LASTEXITCODE -ne 0) { throw "$Programa terminou com código $LASTEXITCODE" }
 }
 
-function Remover-Configuracao {
+function Remove-Configuracao {
     Etapa 'parar o sistema' {
         if (Get-ScheduledTask -TaskName $Tarefa -ErrorAction SilentlyContinue) {
             Stop-ScheduledTask -TaskName $Tarefa
