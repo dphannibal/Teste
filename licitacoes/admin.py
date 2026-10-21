@@ -7,7 +7,7 @@ from werkzeug.security import generate_password_hash
 
 from .auth import permissao
 from .db import get_db, registrar
-from .perfis import DESCRICAO_PERFIS, PERFIS
+from .perfis import DESCRICAO_PERFIS, PERFIS, VINCULOS, VINCULOS_EFETIVOS
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -134,6 +134,69 @@ def redefinir_senha(id_):
     conn.commit()
     flash(f"Nova senha temporária de “{usuario['login']}”: {senha}", "sucesso")
     return redirect(url_for("admin.usuarios"))
+
+
+@bp.route("/servidores")
+@permissao("servidores")
+def servidores():
+    lista = get_db().execute(
+        "SELECT s.*, (SELECT COUNT(*) FROM licitacoes l"
+        "             WHERE s.id IN (l.agente_id, l.membro1_id, l.membro2_id)) AS escalas"
+        "  FROM servidores s ORDER BY s.ativo DESC, s.nome"
+    ).fetchall()
+    return render_template("admin/servidores.html", servidores=lista, vinculos=VINCULOS,
+                           efetivos=VINCULOS_EFETIVOS)
+
+
+@bp.route("/servidores/novo", methods=["GET", "POST"], defaults={"id_": None})
+@bp.route("/servidores/<int:id_>/editar", methods=["GET", "POST"])
+@permissao("servidores")
+def servidor_form(id_):
+    conn = get_db()
+    atual = None
+    if id_ is not None:
+        atual = conn.execute("SELECT * FROM servidores WHERE id = ?", (id_,)).fetchone()
+        if atual is None:
+            abort(404)
+    dados = dict(atual) if atual else {"vinculo": "efetivo", "ativo": 1}
+
+    if request.method == "POST":
+        dados = {c: request.form.get(c, "").strip() for c in ("nome", "matricula", "vinculo")}
+        dados["ativo"] = 1 if (request.form.get("ativo") or atual is None) else 0
+        erros = []
+        if not dados["nome"]:
+            erros.append("Informe o nome do servidor.")
+        if dados["vinculo"] not in VINCULOS:
+            erros.append("Selecione o vínculo do servidor.")
+        if erros:
+            for e in erros:
+                flash(e, "erro")
+        else:
+            valores = (dados["nome"], dados["matricula"] or None, dados["vinculo"], dados["ativo"])
+            if atual is None:
+                conn.execute("INSERT INTO servidores (nome, matricula, vinculo, ativo)"
+                             " VALUES (?, ?, ?, ?)", valores)
+                registrar("Cadastro de servidor", referencia=dados["nome"],
+                          detalhes=f"Vínculo: {VINCULOS[dados['vinculo']]}")
+            else:
+                conn.execute("UPDATE servidores SET nome = ?, matricula = ?, vinculo = ?,"
+                             " ativo = ? WHERE id = ?", (*valores, id_))
+                mudancas = []
+                if dados["vinculo"] != atual["vinculo"]:
+                    mudancas.append(f"Vínculo: {VINCULOS[atual['vinculo']]} → "
+                                    f"{VINCULOS[dados['vinculo']]}")
+                if dados["ativo"] != atual["ativo"]:
+                    mudancas.append("Reativado" if dados["ativo"] else "Desativado")
+                if dados["nome"] != atual["nome"]:
+                    mudancas.append(f"Nome: {atual['nome']} → {dados['nome']}")
+                registrar("Alteração de servidor", referencia=dados["nome"],
+                          detalhes="; ".join(mudancas) or None)
+            conn.commit()
+            flash("Servidor salvo.", "sucesso")
+            return redirect(url_for("admin.servidores"))
+
+    return render_template("admin/servidor_form.html", dados=dados, novo=atual is None,
+                           vinculos=VINCULOS)
 
 
 @bp.route("/auditoria")

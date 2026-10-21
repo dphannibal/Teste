@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block titulo %}Suspender / remarcar{% endblock %}
+{% block conteudo %}
+<h1>Suspender ou remarcar a sessão</h1>
+<p class="sutil">{{ lic.modalidade }} {{ lic.numero_edital or '' }} — processo {{ lic.numero_processo }}.
+Sessão atual: <strong>{{ lic.data_sessao|data if lic.data_sessao else 'a definir' }}</strong>.</p>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <fieldset>
+    <legend>O que aconteceu? *</legend>
+    <label class="opcao"><input type="radio" name="acao" value="suspender" {% if dados.acao == 'suspender' %}checked{% endif %}>
+      <span><strong>Suspensa sem data definida</strong> — informe quando a sessão foi suspensa.</span></label>
+    <label class="opcao"><input type="radio" name="acao" value="remarcar" {% if dados.acao == 'remarcar' %}checked{% endif %}>
+      <span><strong>Remarcada com data definida</strong> — informe a nova data e hora da sessão.</span></label>
+  </fieldset>
+  <label data-acao="suspender">Data e hora da suspensão *<input type="datetime-local" name="suspensa_em" value="{{ dados.suspensa_em or '' }}"></label>
+  <label data-acao="remarcar">Nova data e hora da sessão *<input type="datetime-local" name="nova_data" value="{{ dados.nova_data or '' }}"></label>
+  <label>Motivo<textarea name="motivo" rows="3" placeholder="Ex.: impugnação do edital, decisão do TCE, pedido de esclarecimento">{{ dados.motivo or '' }}</textarea></label>
+  <div class="acoes">
+    <button class="primario">Registrar</button>
+    <a href="{{ url_for('agenda.detalhe', id_=lic.id) }}">Cancelar</a>
+  </div>
+</form>
+<script>
+(function () {
+  function ajustar() {
+    var marcado = document.querySelector('input[name=acao]:checked');
+    document.querySelectorAll('[data-acao]').forEach(function (e) {
+      e.hidden = !marcado || e.dataset.acao !== marcado.value;
+      e.querySelector('input').required = !e.hidden;
+    });
+  }
+  document.querySelectorAll('input[name=acao]').forEach(function (r) { r.addEventListener('change', ajustar); });
+  ajustar();
+})();
+</script>
+{% endblock %}

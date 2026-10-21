@@ -5,6 +5,7 @@
 <div class="cabecalho">
   <h1>Licitações</h1>
   <div class="acoes">
+    <a class="botao whatsapp" href="{{ url_for('agenda.whatsapp') }}">Enviar abertas pelo WhatsApp</a>
     <a class="botao" href="{{ url_for('agenda.exportar_ics', **filtros) }}" title="Importar no Outlook ou Google Agenda">Exportar agenda (.ics)</a>
     {% if pode('criar') %}<a class="botao primario" href="{{ url_for('agenda.nova') }}">+ Nova licitação</a>{% endif %}
   </div>
@@ -22,12 +23,12 @@
       {% for s in STATUS %}<option {% if filtros.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
     </select>
   </label>
-  <label>Responsável
-    <select name="responsavel"><option value="">Todos</option>
-      {% for r in responsaveis %}<option value="{{ r.id }}" {% if filtros.responsavel == r.id|string %}selected{% endif %}>{{ r.nome }}</option>{% endfor %}
+  <label>Servidor na equipe
+    <select name="servidor"><option value="">Todos</option>
+      {% for s in servidores %}<option value="{{ s.id }}" {% if filtros.servidor == s.id|string %}selected{% endif %}>{{ s.nome }}</option>{% endfor %}
     </select>
   </label>
-  <label>De <input type="date" name="de" value="{{ filtros.de }}"></label>
+  <label>Sessão de <input type="date" name="de" value="{{ filtros.de }}"></label>
   <label>Até <input type="date" name="ate" value="{{ filtros.ate }}"></label>
   <div class="acoes"><button class="primario">Filtrar</button> <a href="{{ url_for('agenda.lista') }}">Limpar</a></div>
 </form>

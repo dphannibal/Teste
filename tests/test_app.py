@@ -21,6 +21,10 @@ def app(tmp_path):
                 " VALUES (?, ?, ?, ?, 0)",
                 (perfil.title(), perfil, generate_password_hash(SENHA), perfil),
             )
+        for nome, vinculo in (("Ana Efetiva", "efetivo"), ("Beto Efetivo", "efetivo"),
+                              ("Caio Comissionado", "comissionado"),
+                              ("Dora Temporária", "temporario")):
+            conn.execute("INSERT INTO servidores (nome, vinculo) VALUES (?, ?)", (nome, vinculo))
         conn.commit()
     return app
 
@@ -54,6 +58,11 @@ LICITACAO = {
     "local": "Compras.gov.br",
     "valor_estimado": "150.000,50",
     "status": "Edital publicado",
+    "data_publicacao": "2026-09-01",
+    # Servidores 1 e 2 são efetivos; 3 e 4 não.
+    "agente_id": "1",
+    "membro1_id": "2",
+    "membro2_id": "3",
 }
 
 
@@ -195,3 +204,98 @@ def test_admin_inicial(tmp_path):
     resp = entrar(client, "admin", senha)
     assert resp.headers["Location"] == "/"
     assert client.get("/").headers["Location"].endswith("/senha")
+
+
+def test_equipe_com_minoria_efetiva_e_rejeitada(client):
+    entrar(client, "operador")
+    dados = dict(LICITACAO, membro1_id="3", membro2_id="4")
+    html = post(client, "/licitacoes/nova", dados, "/licitacoes/nova").get_data(as_text=True)
+    assert "minoria de servidores efetivos" in html
+    assert "Caio Comissionado e Dora Temporária" in html
+
+    dados = dict(LICITACAO, membro1_id="1")
+    html = post(client, "/licitacoes/nova", dados, "/licitacoes/nova").get_data(as_text=True)
+    assert "mais de uma função" in html
+
+
+def test_equipe_completa_exigida_fora_do_planejamento(client):
+    entrar(client, "operador")
+    dados = dict(LICITACAO, membro2_id="")
+    html = post(client, "/licitacoes/nova", dados, "/licitacoes/nova").get_data(as_text=True)
+    assert "equipe completa" in html
+
+    dados = dict(LICITACAO, membro2_id="", status="Em planejamento", data_sessao="")
+    assert post(client, "/licitacoes/nova", dados, "/licitacoes/nova").status_code == 302
+
+
+def test_credenciamento_aberto_e_renovado_anualmente(client):
+    entrar(client, "gestor")
+    dados = dict(LICITACAO, modalidade="Credenciamento", numero_edital="CR 001/2026",
+                 data_publicacao="2026-03-10", status="Edital publicado")
+    html = post(client, "/licitacoes/nova", dados, "/licitacoes/nova").get_data(as_text=True)
+    assert "Credenciamento só pode estar" in html
+
+    dados["status"] = "Em andamento"
+    id_ = int(post(client, "/licitacoes/nova", dados, "/licitacoes/nova")
+              .headers["Location"].rsplit("/", 1)[1])
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "10/03/2027" in pagina  # vigência padrão: 1 ano após a publicação
+    assert "Suspender / remarcar" not in pagina
+
+    post(client, f"/licitacoes/{id_}/renovar", {})
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "10/03/2028" in pagina and "Renovação do credenciamento" in pagina
+    assert "Credenciamentos abertos" in client.get("/").get_data(as_text=True)
+    assert "Credenciamento aberto" in client.get("/licitacoes/whatsapp").get_data(as_text=True)
+
+
+def test_operador_suspende_e_remarca(client):
+    entrar(client, "operador")
+    id_ = criar_licitacao(client)
+
+    # Suspensão não é feita pelo formulário comum.
+    html = post(client, f"/licitacoes/{id_}/editar", dict(LICITACAO, status="Suspensa"),
+                f"/licitacoes/{id_}/editar").get_data(as_text=True)
+    assert "Suspender / remarcar" in html
+
+    url = f"/licitacoes/{id_}/suspender"
+    post(client, url, {"acao": "suspender", "suspensa_em": "2026-10-20T14:35",
+                       "motivo": "Impugnação do edital"}, url)
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "Sessão suspensa sem data definida" in pagina and "20/10/2026 14:35" in pagina
+    assert "Suspensas sem data definida" in client.get("/").get_data(as_text=True)
+
+    html = post(client, url, {"acao": "remarcar", "nova_data": "2020-01-01T10:00"}, url)
+    assert "deve ser futura" in html.get_data(as_text=True)
+    post(client, url, {"acao": "remarcar", "nova_data": "2030-02-15T10:00"}, url)
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "Remarcada" in pagina and "15/02/2030 10:00" in pagina
+    assert "De 05/11/2026 09:30 para 15/02/2030 10:00" in pagina
+
+
+def test_consulta_nao_suspende(client):
+    entrar(client, "gestor")
+    id_ = criar_licitacao(client)
+    client.post("/logout", data={"_csrf": csrf(client, "/")})
+    entrar(client, "consulta")
+    assert client.get(f"/licitacoes/{id_}/suspender").status_code == 403
+
+
+def test_whatsapp_lista_somente_abertas(client):
+    entrar(client, "operador")
+    criar_licitacao(client)
+    post(client, "/licitacoes/nova", dict(LICITACAO, numero_processo="2026.HOMOLOG",
+                                          status="Homologada"), "/licitacoes/nova")
+    post(client, "/licitacoes/nova", dict(LICITACAO, numero_processo="2026.PLANEJ",
+                                          status="Em planejamento"), "/licitacoes/nova")
+    html = client.get("/licitacoes/whatsapp").get_data(as_text=True)
+    assert "2026.000123" in html and "Sessão: 05/11/2026 às 09:30" in html
+    assert "2026.HOMOLOG" not in html and "2026.PLANEJ" not in html
+    assert "https://wa.me/?text=" in html
+
+
+def test_painel_mostra_sessoes_alem_de_30_dias(client):
+    entrar(client, "operador")
+    post(client, "/licitacoes/nova", dict(LICITACAO, numero_processo="2027.LONGE",
+                                          data_sessao="2027-06-01T09:00"), "/licitacoes/nova")
+    assert "2027.LONGE" in client.get("/").get_data(as_text=True)

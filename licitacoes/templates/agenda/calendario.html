@@ -18,11 +18,9 @@
     {% for dia in semana %}
       <td class="{% if dia.month != mes %}fora{% endif %} {% if dia == hoje %}hoje{% endif %}">
         <div class="numero">{{ dia.day }}</div>
-        {% for l in eventos.get(dia.isoformat(), []) %}
-          <a class="evento selo-{{ STATUS.get(l.status, 'cinza') }}" href="{{ url_for('agenda.detalhe', id_=l.id) }}"
-             title="{{ l.modalidade }} — {{ l.objeto }} ({{ l.status }})">
-            {{ l.data_sessao[11:16] }} {{ l.numero_edital or l.numero_processo }}
-          </a>
+        {% for e in eventos.get(dia.isoformat(), []) %}
+          <a class="evento selo-{{ STATUS.get(e.lic.status, 'cinza') }}" href="{{ url_for('agenda.detalhe', id_=e.lic.id) }}"
+             title="{{ e.lic.modalidade }} — {{ e.lic.objeto }} ({{ e.lic.status }})">{{ e.rotulo }}</a>
         {% endfor %}
       </td>
     {% endfor %}

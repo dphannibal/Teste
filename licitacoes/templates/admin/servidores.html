@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block titulo %}Servidores{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Servidores</h1>
+  <div class="acoes"><a class="botao primario" href="{{ url_for('admin.servidor_form') }}">+ Novo servidor</a></div>
+</div>
+<p class="sutil">Servidores que podem compor as equipes de licitação (pregoeiro / agente de contratação e membros).
+Cada equipe precisa de maioria efetiva: ao menos 2 dos 3 integrantes do quadro efetivo.</p>
+<div class="tabela-rolagem">
+<table>
+  <thead><tr><th>Nome</th><th>Matrícula</th><th>Vínculo</th><th>Escalas</th><th>Situação</th><th></th></tr></thead>
+  <tbody>
+  {% for s in servidores %}
+    <tr class="{% if not s.ativo %}inativo{% endif %}">
+      <td>{{ s.nome }}</td>
+      <td>{{ s.matricula or '—' }}</td>
+      <td><span class="selo {{ 'selo-verde' if s.vinculo in efetivos else 'selo-cinza' }}">{{ vinculos[s.vinculo] }}</span></td>
+      <td><a href="{{ url_for('agenda.lista', servidor=s.id) }}">{{ s.escalas }}</a></td>
+      <td>{{ 'Ativo' if s.ativo else 'Inativo' }}</td>
+      <td><a href="{{ url_for('admin.servidor_form', id_=s.id) }}">Editar</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="vazio">Nenhum servidor cadastrado. Cadastre os servidores antes de montar as equipes.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

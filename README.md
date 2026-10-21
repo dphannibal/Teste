@@ -5,12 +5,28 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
 
 ## Funcionalidades
 
-- **Painel**: sessões de hoje, próximas sessões (30 dias), totais por situação e alerta de
-  sessões que já passaram sem desfecho registrado.
+- **Painel**: sessões de hoje, todas as próximas sessões (sem limite de prazo, pois há
+  editais publicados com mais de 30 dias de antecedência), suspensas sem data definida,
+  credenciamentos abertos com alerta de renovação, totais por situação e sessões que já
+  passaram sem desfecho registrado.
 - **Calendário mensal** com as sessões coloridas pela situação.
 - **Cadastro de licitações**: nº do processo e do edital, modalidade (Lei nº 14.133/2021),
-  objeto, data/hora da sessão, local/plataforma, responsável (pregoeiro / agente de
-  contratação), valor estimado, situação e observações.
+  objeto, publicação do edital, data/hora da sessão, local/plataforma, equipe, valor
+  estimado, situação e observações.
+- **Credenciamento**: fica aberto por tempo indeterminado, sem sessão; tem vigência anual
+  (padrão: 1 ano após a publicação) renovada pelo botão “Renovar por 1 ano”. Só admite as
+  situações “Em andamento” e “Concluída”.
+- **Equipe**: pregoeiro ou agente de contratação e mais dois membros, escolhidos no
+  cadastro de **servidores** (com vínculo funcional). O sistema **impede salvar uma equipe
+  com minoria de efetivos** (ao menos 2 dos 3 devem ser efetivos ou empregados públicos do
+  quadro permanente) e exige a equipe completa fora da fase de planejamento (exceto
+  inexigibilidade).
+- **Suspender / remarcar**: registra a sessão **suspensa sem data definida** (com data e
+  hora da suspensão e motivo) ou **remarcada** (com a nova data e hora).
+- **WhatsApp**: botão que monta a lista das licitações abertas (edital publicado,
+  remarcadas, em andamento, suspensas e credenciamentos abertos) já formatada para o
+  WhatsApp, com opção de abrir o WhatsApp/WhatsApp Web ou copiar o texto. Cada licitação
+  também pode ser compartilhada individualmente.
 - **Busca e filtros** por texto, modalidade, situação, responsável e período.
 - **Exportação .ics** da agenda (filtrada) para Outlook, Google Agenda, Thunderbird etc.
 - **Histórico** de alterações em cada licitação e **auditoria** geral (logins, cadastros,
@@ -24,12 +40,16 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
 |---------------------------------|:-------------:|:------:|:--------:|:--------:|
 | Ver painel, calendário e lista  | ✔ | ✔ | ✔ | ✔ |
 | Cadastrar e editar licitações   | ✔ | ✔ | ✔ |   |
+| Suspender / remarcar sessão     | ✔ | ✔ | ✔ |   |
+| Enviar abertas pelo WhatsApp    | ✔ | ✔ | ✔ | ✔ |
 | Excluir licitações              | ✔ | ✔ |   |   |
+| Cadastrar servidores (equipes)  | ✔ | ✔ |   |   |
 | Consultar auditoria             | ✔ | ✔ |   |   |
 | Gerenciar usuários              | ✔ |   |   |   |
 
 As regras ficam em `licitacoes/perfis.py` (dicionário `PERMISSOES`) e podem ser ajustadas
-à realidade da secretaria. O mesmo arquivo define as modalidades e situações.
+à realidade da secretaria. O mesmo arquivo define as modalidades, as situações e os vínculos que contam como
+efetivos.
 
 ## Instalação no servidor da intranet
 
@@ -46,6 +66,9 @@ python servidor.py --porta 8080
 Na primeira execução é criado o usuário **admin** e a senha temporária aparece no
 terminal (ou defina-a antes com a variável de ambiente `ADMIN_PASSWORD`). Os demais
 servidores da secretaria acessam por `http://NOME-DO-SERVIDOR:8080/`.
+
+Primeiros passos: cadastre os usuários (menu **Usuários**) e os servidores que compõem as
+equipes (menu **Servidores**) antes de lançar as licitações.
 
 Se precisar recuperar o acesso de administrador:
 
@@ -85,8 +108,8 @@ licitacoes/
   __init__.py            criação da aplicação, CSRF, filtros, comandos
   perfis.py              perfis, permissões, modalidades e situações
   auth.py                login, troca de senha e controle de acesso
-  agenda.py              painel, calendário, cadastro e exportação .ics
-  admin.py               usuários e auditoria
+  agenda.py              painel, calendário, cadastro, suspensão, WhatsApp e .ics
+  admin.py               usuários, servidores e auditoria
   db.py                  esquema e acesso ao SQLite
   templates/, static/    telas
 tests/                   testes automatizados

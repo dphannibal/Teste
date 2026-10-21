@@ -2,7 +2,10 @@
 {% from '_macros.html' import tabela, selo with context %}
 {% block titulo %}Painel{% endblock %}
 {% block conteudo %}
-<h1>Painel</h1>
+<div class="cabecalho">
+  <h1>Painel</h1>
+  <div class="acoes"><a class="botao whatsapp" href="{{ url_for('agenda.whatsapp') }}">Enviar abertas pelo WhatsApp</a></div>
+</div>
 
 <section class="indicadores">
   {% for status, cor in STATUS.items() if contagem.get(status) %}
@@ -26,9 +29,57 @@
 {% endif %}
 
 <section class="cartao">
-  <h2>Próximos 30 dias</h2>
-  {{ tabela(proximas, 'Nenhuma sessão agendada para os próximos 30 dias.') }}
+  <h2>Próximas sessões</h2>
+  {{ tabela(proximas, 'Nenhuma sessão agendada.') }}
 </section>
+
+{% if suspensas %}
+<section class="cartao alerta">
+  <h2>Suspensas sem data definida</h2>
+  <div class="tabela-rolagem">
+  <table>
+    <thead><tr><th>Suspensa em</th><th>Processo / Edital</th><th>Modalidade</th><th>Objeto</th><th>Motivo</th></tr></thead>
+    <tbody>
+    {% for l in suspensas %}
+      <tr>
+        <td class="nowrap">{{ l.suspensa_em|data if l.suspensa_em else '—' }}</td>
+        <td><a href="{{ url_for('agenda.detalhe', id_=l.id) }}">{{ l.numero_processo }}</a>{% if l.numero_edital %}<br><small>{{ l.numero_edital }}</small>{% endif %}</td>
+        <td>{{ l.modalidade }}</td>
+        <td>{{ l.objeto|truncate(90) }}</td>
+        <td>{{ l.motivo_suspensao or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+{% if credenciamentos %}
+<section class="cartao">
+  <h2>Credenciamentos abertos</h2>
+  <p class="sutil">Ficam abertos por tempo indeterminado; a vigência deve ser renovada a cada ano.</p>
+  <div class="tabela-rolagem">
+  <table>
+    <thead><tr><th>Vigência até</th><th>Processo / Edital</th><th>Objeto</th><th>Renovação</th></tr></thead>
+    <tbody>
+    {% for l in credenciamentos %}
+      <tr>
+        <td class="nowrap">{{ l.vigencia_ate|data(false) if l.vigencia_ate else '—' }}</td>
+        <td><a href="{{ url_for('agenda.detalhe', id_=l.id) }}">{{ l.numero_processo }}</a>{% if l.numero_edital %}<br><small>{{ l.numero_edital }}</small>{% endif %}</td>
+        <td>{{ l.objeto|truncate(100) }}</td>
+        <td>
+          {% if not l.vigencia_ate or l.vigencia_ate < hoje %}<span class="selo selo-vermelho">Vencida — renovar</span>
+          {% elif l.vigencia_ate <= alerta_renovacao %}<span class="selo selo-laranja">Renovar em breve</span>
+          {% else %}<span class="selo selo-verde">Em dia</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
 
 {% if atrasadas %}
 <section class="cartao alerta">

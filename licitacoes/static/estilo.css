@@ -11,11 +11,14 @@
   --azul: #d1e3fa;      --azul-t: #1d4f91;
   --amarelo: #fdf0c4;   --amarelo-t: #7a5a00;
   --laranja: #fde1c8;   --laranja-t: #9a3d00;
+  --roxo: #e6dcfa;      --roxo-t: #5b2ca0;
+  --whatsapp: #128c4a;
   --verde: #d3f2dc;     --verde-t: #146c2e;
   --vermelho: #fbd9d6;  --vermelho-t: #9b1c13;
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; font: 15px/1.5 system-ui, "Segoe UI", Roboto, Arial, sans-serif; background: var(--fundo); color: var(--texto); }
 a { color: var(--primaria); }
 h1 { font-size: 1.5rem; margin: 0 0 1rem; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
@@ -50,6 +53,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 .aviso { padding: .7rem 1rem; border-radius: 6px; margin-bottom: 1rem; border: 1px solid transparent; }
 .aviso-sucesso { background: var(--verde); color: var(--verde-t); }
 .aviso-erro { background: var(--vermelho); color: var(--vermelho-t); }
+.aviso-alerta { background: var(--laranja); color: var(--laranja-t); }
 .aviso-info { background: var(--azul); color: var(--azul-t); }
 
 /* Formulários */
@@ -71,8 +75,14 @@ button:hover, .botao:hover { border-color: var(--primaria); }
 .primario:hover { background: var(--primaria-escura); }
 .perigo { background: #fff; border-color: var(--perigo); color: var(--perigo); }
 .perigo:hover { background: var(--perigo); color: #fff; }
+.whatsapp { background: var(--whatsapp); border-color: var(--whatsapp); color: #fff; }
+.whatsapp:hover { background: #0d6b38; }
+textarea.mensagem { font-family: ui-monospace, Consolas, monospace; font-size: .9rem; resize: vertical; }
 button.link { background: none; border: 0; padding: 0; color: var(--primaria); text-decoration: underline; }
-.topo button.link { color: #fff; text-decoration: none; }
+.topo .whatsapp { background: var(--whatsapp); border-color: var(--whatsapp); color: #fff; }
+.whatsapp:hover { background: #0d6b38; }
+textarea.mensagem { font-family: ui-monospace, Consolas, monospace; font-size: .9rem; resize: vertical; }
+button.link { color: #fff; text-decoration: none; }
 
 /* Tabelas */
 .tabela-rolagem { overflow-x: auto; }
@@ -88,6 +98,7 @@ tr.inativo td { color: var(--sutil); }
 .selo-azul { background: var(--azul); color: var(--azul-t); }
 .selo-amarelo { background: var(--amarelo); color: var(--amarelo-t); }
 .selo-laranja { background: var(--laranja); color: var(--laranja-t); }
+.selo-roxo { background: var(--roxo); color: var(--roxo-t); }
 .selo-verde { background: var(--verde); color: var(--verde-t); }
 .selo-vermelho { background: var(--vermelho); color: var(--vermelho-t); }
 .legenda { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: 1rem; }
@@ -99,6 +110,7 @@ tr.inativo td { color: var(--sutil); }
 .indicador span { color: var(--sutil); font-size: .85rem; }
 .borda-cinza { border-top-color: var(--cinza-t); } .borda-azul { border-top-color: var(--azul-t); }
 .borda-amarelo { border-top-color: var(--amarelo-t); } .borda-laranja { border-top-color: var(--laranja-t); }
+.borda-roxo { border-top-color: var(--roxo-t); }
 .borda-verde { border-top-color: var(--verde-t); } .borda-vermelho { border-top-color: var(--vermelho-t); }
 .hoje { margin: 0; padding-left: 1.2rem; }
 
