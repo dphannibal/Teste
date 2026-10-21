@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block titulo %}{{ 'Nova situação' if novo else 'Editar situação' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Nova situação' if novo else 'Editar situação: ' ~ dados.nome }}</h1>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Nome *<input name="nome" required value="{{ dados.nome or '' }}"></label>
+  <div class="grade">
+    <label>Cor *<input type="color" name="cor" value="{{ dados.cor }}"></label>
+    <label>Ordem<input type="number" name="ordem" value="{{ dados.ordem }}"></label>
+  </div>
+  {% if dados.sistema %}
+    <p class="sutil">Fase: <strong>{{ todas_fases[dados.fase] }}</strong>. Situação usada pelo sistema: a fase não muda e ela não pode ser desativada.</p>
+  {% else %}
+  <label>Fase *
+    <select name="fase" required>
+      {% for chave, descricao in fases.items() %}<option value="{{ chave }}" {% if dados.fase == chave %}selected{% endif %}>{{ descricao }}</option>{% endfor %}
+    </select>
+    <small>A fase define o comportamento: em que quadro do painel aparece, se pode ser suspensa, se é divulgada no WhatsApp etc.</small>
+  </label>
+  <label class="opcao"><input type="checkbox" name="ativa" value="1" {% if dados.ativa %}checked{% endif %}> Ativa</label>
+  {% endif %}
+  <div class="acoes">
+    <button class="primario">Salvar</button>
+    <a href="{{ url_for('config.parametros') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

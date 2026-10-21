@@ -30,7 +30,7 @@
 </div>
 
 <section class="cartao">
-  <h2>Perfis de acesso</h2>
+  <h2>Perfis de acesso {% if g.usuario.perfil == 'administrador' %}<small><a href="{{ url_for('config.perfis') }}">alterar permissões</a></small>{% endif %}</h2>
   <dl class="dados">
     {% for chave, nome in PERFIS.items() %}<dt>{{ nome }}</dt><dd>{{ descricoes[chave] }}</dd>{% endfor %}
   </dl>

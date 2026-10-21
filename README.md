@@ -5,7 +5,11 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
 
 ## Funcionalidades
 
-- **Painel**: o **número do edital** (PE 007/2026, CE 075/2025…) é o destaque de cada
+- **Painel**: cada usuário escolhe as **colunas, a ordem delas e o critério de
+  ordenação** (também clicando no título da coluna). O quadro **Licitações em andamento**
+  reúne editais publicados, remarcadas e sessões abertas, inclusive as suspensas depois de
+  abertas para análise documental; as suspensas antes da abertura ficam em quadro próprio.
+  O **número do edital** (PE 007/2026, CE 075/2025…) é o destaque de cada
   linha, e as linhas têm **cores suaves por modalidade** (pregão eletrônico em verde,
   pregão presencial em vermelho, concorrência eletrônica em azul etc.). Cada linha mostra
   a equipe (pregoeiro/agente e os dois membros; o terceiro só aparece se escalado).
@@ -22,13 +26,13 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
   situações “Em andamento” e “Concluída”.
 - **Equipe**: pregoeiro ou agente de contratação e mais dois membros, além de um terceiro
   membro opcional, escolhidos no cadastro de **servidores** (com vínculo funcional). O sistema **impede salvar uma equipe
-  com minoria de efetivos** (com 3 integrantes, ao menos 2 efetivos ou empregados públicos
-  do quadro permanente) e exige a equipe completa fora da fase de planejamento (exceto
+  com minoria de efetivos** (maioria estrita de efetivos ou empregados públicos do quadro
+  permanente: 2 de 3, ou 3 de 4 com o terceiro membro) e exige a equipe completa fora da fase de planejamento (exceto
   inexigibilidade).
 - **Férias e afastamentos**: registrados por servidor. O sistema impede escalar quem
   estará afastado na data da sessão; se a sessão **já estiver em andamento**, avisa e
-  permite **trocar ou manter** o membro (a decisão vai para o histórico). O painel alerta
-  quando um afastamento lançado depois atinge uma equipe já escalada.
+  permite **trocar ou manter** o membro (a decisão vai para o histórico). O sistema alerta
+  na licitação quando um afastamento lançado depois atinge uma equipe já escalada.
 - **Suspender / remarcar**, conforme a fase da sessão pública:
   - antes da abertura: *suspensa sem data definida*, *remarcada* ou *remarcada após
     retificação do edital*;
@@ -48,20 +52,35 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
 
 ## Perfis de acesso
 
-| Permissão                       | Administrador | Gestor | Operador | Consulta |
-|---------------------------------|:-------------:|:------:|:--------:|:--------:|
-| Ver painel, calendário e lista  | ✔ | ✔ | ✔ | ✔ |
-| Cadastrar e editar licitações   | ✔ | ✔ | ✔ |   |
-| Suspender / remarcar sessão     | ✔ | ✔ | ✔ |   |
-| Enviar abertas pelo WhatsApp    | ✔ | ✔ | ✔ | ✔ |
-| Excluir licitações              | ✔ | ✔ |   |   |
-| Cadastrar servidores (equipes)  | ✔ | ✔ |   |   |
-| Consultar auditoria             | ✔ | ✔ |   |   |
-| Gerenciar usuários              | ✔ |   |   |   |
+Perfis: **Administrador**, **Gestor**, **Pregoeiro / Agente de Contratação** e **Consulta**.
+O que cada perfil pode fazer é definido pelo Administrador em **Configurações → Permissões
+dos perfis** (o Administrador sempre tem tudo). Padrão inicial:
 
-As regras ficam em `licitacoes/perfis.py` (dicionário `PERMISSOES`) e podem ser ajustadas
-à realidade da secretaria. O mesmo arquivo define as modalidades, as situações e os vínculos que contam como
-efetivos.
+| Permissão                                   | Administrador | Gestor | Pregoeiro / Agente | Consulta |
+|---------------------------------------------|:-:|:-:|:-:|:-:|
+| Ver painel, calendário e licitações         | ✔ | ✔ | ✔ | ✔ |
+| Cadastrar e editar licitações               | ✔ | ✔ | ✔ |   |
+| Suspender e remarcar sessões                | ✔ | ✔ | ✔ |   |
+| Excluir licitações                          | ✔ | ✔ |   |   |
+| Cadastrar servidores                        | ✔ | ✔ |   |   |
+| Registrar férias e afastamentos             | ✔ | ✔ |   |   |
+| Consultar auditoria                         | ✔ | ✔ |   |   |
+| Alterar parâmetros (órgão, modalidades, situações) | ✔ | ✔ |   |   |
+| Gerenciar usuários                          | ✔ |   |   |   |
+
+## Parâmetros (Configurações)
+
+Quem tem a permissão de parâmetros (Administrador e Gestor, por padrão) altera:
+
+- **Nome da secretaria/órgão** exibido no cabeçalho e nas imagens.
+- **Modalidades**: nome, **sigla**, cor, ordem, se exige equipe, quem conduz (pregoeiro ou
+  agente) e se funciona como credenciamento. O número do edital é digitado **sem a sigla**
+  (ex.: `007/2026`) e aparece nas telas como `PE 007/2026`.
+- **Situações da licitação**: nome, cor, ordem e fase. O comportamento segue a fase
+  (planejamento, publicada, remarcada, suspensa, em andamento, concluída, encerrada). As
+  situações do sistema podem ser renomeadas e recoloridas, mas não excluídas.
+
+Tudo fica registrado na auditoria.
 
 ## Instalação no servidor da intranet
 
@@ -121,10 +140,12 @@ Estrutura:
 servidor.py              inicia o servidor (Waitress)
 licitacoes/
   __init__.py            criação da aplicação, CSRF, filtros, comandos
-  perfis.py              perfis, permissões, modalidades e situações
+  perfis.py              perfis e valores padrão dos parâmetros
   auth.py                login, troca de senha e controle de acesso
   agenda.py              painel, calendário, cadastro, suspensão, WhatsApp e .ics
   admin.py               usuários, servidores, afastamentos e auditoria
+  parametros.py          leitura dos parâmetros (modalidades, situações, permissões)
+  config.py              telas de configuração (permissões e parâmetros)
   equipe.py              regras da equipe (efetivos, férias e afastamentos)
   imagem.py              imagem para WhatsApp (fonte Inter em static/fontes, licença OFL)
   db.py                  esquema e acesso ao SQLite

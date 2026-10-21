@@ -8,9 +8,14 @@ from werkzeug.security import generate_password_hash
 
 from .auth import permissao
 from .db import get_db, registrar
-from .perfis import (
-    DESCRICAO_PERFIS, PERFIS, STATUS_ABERTOS, TIPOS_AFASTAMENTO, VINCULOS, VINCULOS_EFETIVOS,
-)
+from . import parametros as P
+from .perfis import FASES_ABERTAS, PERFIS, PERMISSOES, TIPOS_AFASTAMENTO, VINCULOS, VINCULOS_EFETIVOS
+
+
+def _descricoes_perfis():
+    """Resumo do que cada perfil pode fazer, conforme as permissões configuradas."""
+    return {perfil: "; ".join(PERMISSOES[p] for p in PERMISSOES if p in P.permissoes().get(
+        perfil, set())) or "Nenhuma permissão" for perfil in PERFIS}
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -33,7 +38,7 @@ def _senha_temporaria():
 @permissao("usuarios")
 def usuarios():
     lista = get_db().execute("SELECT * FROM usuarios ORDER BY ativo DESC, nome").fetchall()
-    return render_template("admin/usuarios.html", usuarios=lista, descricoes=DESCRICAO_PERFIS)
+    return render_template("admin/usuarios.html", usuarios=lista, descricoes=_descricoes_perfis())
 
 
 @bp.route("/usuarios/novo", methods=["GET", "POST"])
@@ -71,7 +76,7 @@ def novo_usuario():
                   "anote e entregue ao usuário; ela será trocada no primeiro acesso.", "sucesso")
             return redirect(url_for("admin.usuarios"))
 
-    return render_template("admin/usuario_form.html", dados=dados, descricoes=DESCRICAO_PERFIS,
+    return render_template("admin/usuario_form.html", dados=dados, descricoes=_descricoes_perfis(),
                            novo=True)
 
 
@@ -119,7 +124,7 @@ def editar_usuario(id_):
             flash("Usuário atualizado.", "sucesso")
             return redirect(url_for("admin.usuarios"))
 
-    return render_template("admin/usuario_form.html", dados=dados, descricoes=DESCRICAO_PERFIS,
+    return render_template("admin/usuario_form.html", dados=dados, descricoes=_descricoes_perfis(),
                            novo=False)
 
 
@@ -140,7 +145,7 @@ def redefinir_senha(id_):
 
 
 @bp.route("/servidores")
-@permissao("servidores")
+@permissao("servidores", "afastamentos")
 def servidores():
     lista = get_db().execute(
         "SELECT s.*, (SELECT COUNT(*) FROM licitacoes l"
@@ -212,19 +217,21 @@ def servidor_form(id_):
 
 def _licitacoes_afetadas(servidor_id, inicio, fim):
     """Licitações abertas com sessão futura no período em que o servidor estará afastado."""
-    marcadores = ",".join("?" * len(STATUS_ABERTOS))
+    abertas = [c for c in P.chaves(*FASES_ABERTAS) if P.fase(c) != "suspensa"]
+    marcadores = ",".join("?" * len(abertas))
     return get_db().execute(
-        "SELECT id, numero_edital, numero_processo, status, data_sessao FROM licitacoes"
+        "SELECT id, numero_edital, numero_processo, modalidade, status, data_sessao"
+        "  FROM licitacoes"
         " WHERE ? IN (agente_id, membro1_id, membro2_id, membro3_id)"
-        f"  AND status IN ({marcadores}) AND status != 'Suspensa'"
+        f"  AND status IN ({marcadores})"
         "   AND substr(data_sessao, 1, 10) BETWEEN max(?, date('now', 'localtime')) AND ?"
         " ORDER BY data_sessao",
-        (servidor_id, *STATUS_ABERTOS, inicio, fim),
+        (servidor_id, *abertas, inicio, fim),
     ).fetchall()
 
 
 @bp.route("/servidores/<int:id_>/afastamentos", methods=["GET", "POST"])
-@permissao("servidores")
+@permissao("afastamentos")
 def afastamentos(id_):
     """Férias, licenças e afastamentos: impedem a escala do servidor no período."""
     conn = get_db()
@@ -263,7 +270,7 @@ def afastamentos(id_):
             flash(f"{dados['tipo']} de {servidor['nome']} registrado(a): {periodo}.", "sucesso")
             afetadas = _licitacoes_afetadas(id_, dados["inicio"], dados["fim"])
             if afetadas:
-                lista = ", ".join(l["numero_edital"] or l["numero_processo"] for l in afetadas)
+                lista = ", ".join(P.edital(l) for l in afetadas)
                 flash(f"Atenção: {servidor['nome']} está escalado(a) em licitação com sessão "
                       f"nesse período: {lista}. Troque o membro (ou, se já estiver em "
                       "andamento, decida se o mantém) na edição da licitação.", "erro")
@@ -277,7 +284,7 @@ def afastamentos(id_):
 
 
 @bp.route("/afastamentos/<int:id_>/excluir", methods=["POST"])
-@permissao("servidores")
+@permissao("afastamentos")
 def excluir_afastamento(id_):
     conn = get_db()
     afastamento = conn.execute(

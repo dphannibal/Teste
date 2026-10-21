@@ -3,7 +3,7 @@
 {% block conteudo %}
 <div class="cabecalho">
   <h1>Servidores</h1>
-  <div class="acoes"><a class="botao primario" href="{{ url_for('admin.servidor_form') }}">+ Novo servidor</a></div>
+  {% if pode('servidores') %}<div class="acoes"><a class="botao primario" href="{{ url_for('admin.servidor_form') }}">+ Novo servidor</a></div>{% endif %}
 </div>
 <p class="sutil">Servidores que podem compor as equipes de licitação (pregoeiro / agente de contratação e membros).
 Cada equipe precisa de maioria efetiva: ao menos 2 dos 3 integrantes do quadro efetivo.</p>
@@ -19,7 +19,7 @@ Cada equipe precisa de maioria efetiva: ao menos 2 dos 3 integrantes do quadro e
       <td><a href="{{ url_for('agenda.lista', servidor=s.id) }}">{{ s.escalas }}</a></td>
       <td>{% if s.afastado %}<span class="selo selo-laranja">{{ s.afastado }}</span>{% elif s.proximo_afastamento %}<small>{{ s.proximo_afastamento }}</small>{% else %}—{% endif %}</td>
       <td>{{ 'Ativo' if s.ativo else 'Inativo' }}</td>
-      <td class="acoes"><a href="{{ url_for('admin.servidor_form', id_=s.id) }}">Editar</a> <a href="{{ url_for('admin.afastamentos', id_=s.id) }}">Férias / afastamentos</a></td>
+      <td class="acoes">{% if pode('servidores') %}<a href="{{ url_for('admin.servidor_form', id_=s.id) }}">Editar</a>{% endif %} {% if pode('afastamentos') %}<a href="{{ url_for('admin.afastamentos', id_=s.id) }}">Férias / afastamentos</a>{% endif %}</td>
     </tr>
   {% else %}
     <tr><td colspan="7" class="vazio">Nenhum servidor cadastrado. Cadastre os servidores antes de montar as equipes.</td></tr>

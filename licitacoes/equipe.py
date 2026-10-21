@@ -30,14 +30,15 @@ def problemas(ids, lista_servidores):
     if len({s["id"] for s in escalados}) < len(escalados):
         erros.append("Um mesmo servidor foi escalado em mais de uma função na equipe.")
     nao_efetivos = [s for s in escalados if s["vinculo"] not in VINCULOS_EFETIVOS]
+    # Os efetivos precisam ser maioria estrita (empate não basta: 2 de 4 é recusado).
     # Avalia sobre a equipe mínima de 3, mesmo quando ainda incompleta.
     tamanho = max(len(escalados), len(EQUIPE_OBRIGATORIA))
-    if len(nao_efetivos) * 2 > tamanho:
+    if len(nao_efetivos) * 2 >= tamanho:
         nomes = ", ".join(s["nome"] for s in nao_efetivos)
         erros.append(
-            f"A equipe não pode ter minoria de servidores efetivos: {nomes} não são "
-            f"efetivos. Ao menos {tamanho - tamanho // 2} dos {tamanho} integrantes devem "
-            "ser do quadro efetivo."
+            f"A equipe precisa de maioria de servidores efetivos: {nomes} não são "
+            f"efetivos. Ao menos {tamanho // 2 + 1} dos {tamanho} integrantes devem ser do "
+            "quadro efetivo."
         )
     return erros
 

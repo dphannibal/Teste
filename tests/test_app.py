@@ -17,7 +17,7 @@ def app(tmp_path):
                       "SECRET_KEY": "teste"})
     with app.app_context():
         conn = get_db()
-        for perfil in ("administrador", "gestor", "operador", "consulta"):
+        for perfil in ("administrador", "gestor", "pregoeiro", "consulta"):
             conn.execute(
                 "INSERT INTO usuarios (nome, login, senha_hash, perfil, trocar_senha)"
                 " VALUES (?, ?, ?, ?, 0)",
@@ -58,13 +58,13 @@ SESSAO_BR = f"{SESSAO:%d/%m/%Y} 09:30"
 
 LICITACAO = {
     "numero_processo": "2026.000123",
-    "numero_edital": "PE 010/2026",
+    "numero_edital": "010/2026",
     "modalidade": "Pregão Eletrônico",
     "objeto": "Aquisição de material de expediente",
     "data_sessao": SESSAO_ISO,
     "local": "Compras.gov.br",
     "valor_estimado": "150.000,50",
-    "status": "Edital publicado",
+    "status": "publicado",
     "data_publicacao": (date.today() - timedelta(days=10)).isoformat(),
     # Servidores 1, 2 e 5 são efetivos; 3 e 4 não.
     "agente_id": "1",
@@ -94,15 +94,15 @@ def test_post_sem_csrf_e_rejeitado(client):
     assert resp.status_code == 400
 
 
-def test_operador_cria_e_edita_mas_nao_exclui(client):
-    entrar(client, "operador")
+def test_pregoeiro_cria_e_edita_mas_nao_exclui(client):
+    entrar(client, "pregoeiro")
     id_ = criar_licitacao(client)
 
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
     assert "R$ 150.000,50" in pagina
     assert "Excluir" not in pagina
 
-    dados = dict(LICITACAO, status="Homologada")
+    dados = dict(LICITACAO, status="homologada")
     resp = post(client, f"/licitacoes/{id_}/editar", dados, f"/licitacoes/{id_}/editar")
     assert resp.status_code == 302
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
@@ -140,7 +140,7 @@ def test_gestor_exclui_e_ve_auditoria(client):
 
 
 def test_validacao_de_campos(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     dados = dict(LICITACAO, modalidade="Inventada", valor_estimado="abc", objeto="")
     resp = post(client, "/licitacoes/nova", dados, "/licitacoes/nova")
     html = resp.get_data(as_text=True)
@@ -149,11 +149,11 @@ def test_validacao_de_campos(client):
 
 
 def test_filtros_e_exportacao_ics(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     criar_licitacao(client)
     post(client, "/licitacoes/nova",
          dict(LICITACAO, numero_processo="2026.999", modalidade="Leilão",
-              numero_edital="LE 001/2026"),
+              numero_edital="001/2026"),
          "/licitacoes/nova")
 
     html = client.get("/licitacoes?modalidade=Leilão").get_data(as_text=True)
@@ -167,7 +167,7 @@ def test_filtros_e_exportacao_ics(client):
 def test_admin_gerencia_usuarios(client, app):
     entrar(client, "administrador")
     resp = post(client, "/admin/usuarios/novo",
-                {"nome": "Maria Silva", "login": "maria.silva", "perfil": "operador"},
+                {"nome": "Maria Silva", "login": "maria.silva", "perfil": "pregoeiro"},
                 "/admin/usuarios/novo")
     html = client.get(resp.headers["Location"]).get_data(as_text=True)
     senha = re.search(r"Senha temporária de “maria.silva”: (\S+)", html).group(1)
@@ -215,10 +215,10 @@ def test_admin_inicial(tmp_path):
 
 
 def test_equipe_com_minoria_efetiva_e_rejeitada(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     dados = dict(LICITACAO, membro1_id="3", membro2_id="4")
     html = post(client, "/licitacoes/nova", dados, "/licitacoes/nova").get_data(as_text=True)
-    assert "minoria de servidores efetivos" in html
+    assert "maioria de servidores efetivos" in html
     assert "Caio Comissionado, Dora Temporária não são efetivos" in html
 
     dados = dict(LICITACAO, membro1_id="1")
@@ -227,23 +227,23 @@ def test_equipe_com_minoria_efetiva_e_rejeitada(client):
 
 
 def test_equipe_completa_exigida_fora_do_planejamento(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     dados = dict(LICITACAO, membro2_id="")
     html = post(client, "/licitacoes/nova", dados, "/licitacoes/nova").get_data(as_text=True)
     assert "Informe a equipe" in html
 
-    dados = dict(LICITACAO, membro2_id="", status="Em planejamento", data_sessao="")
+    dados = dict(LICITACAO, membro2_id="", status="planejamento", data_sessao="")
     assert post(client, "/licitacoes/nova", dados, "/licitacoes/nova").status_code == 302
 
 
 def test_credenciamento_aberto_e_renovado_anualmente(client):
     entrar(client, "gestor")
-    dados = dict(LICITACAO, modalidade="Credenciamento", numero_edital="CR 001/2026",
-                 data_publicacao="2026-03-10", status="Edital publicado")
+    dados = dict(LICITACAO, modalidade="Credenciamento", numero_edital="001/2026",
+                 data_publicacao="2026-03-10", status="publicado")
     html = post(client, "/licitacoes/nova", dados, "/licitacoes/nova").get_data(as_text=True)
-    assert "Credenciamento só pode estar" in html
+    assert "Credenciamento só pode estar em andamento" in html
 
-    dados["status"] = "Em andamento"
+    dados["status"] = "andamento"
     id_ = int(post(client, "/licitacoes/nova", dados, "/licitacoes/nova")
               .headers["Location"].rsplit("/", 1)[1])
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
@@ -264,49 +264,52 @@ def gestor_registra_ferias(client, servidor_id, inicio, fim):
 
 
 def abrir_sessao(client, id_):
-    resp = post(client, f"/licitacoes/{id_}/editar", dict(LICITACAO, status="Em andamento"),
+    resp = post(client, f"/licitacoes/{id_}/editar", dict(LICITACAO, status="andamento"),
                 f"/licitacoes/{id_}/editar")
     assert resp.status_code == 302
 
 
 def test_numero_do_edital_obrigatorio_apos_planejamento(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     html = post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital=""),
                 "/licitacoes/nova").get_data(as_text=True)
     assert "Informe o número do edital" in html
 
 
 def test_painel_destaca_edital_cor_da_modalidade_e_equipe(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     criar_licitacao(client)
     html = client.get("/").get_data(as_text=True)
     assert '<a class="edital"' in html and "PE 010/2026" in html
-    assert "--fundo: #e6f5ea" in html  # pregão eletrônico em verde
+    assert "--destaque: #1e7b3c" in html  # pregão eletrônico em verde
     assert "Pregoeiro(a):</span> Ana Efetiva" in html
     assert "Membros:</span> Beto Efetivo, Caio Comissionado" in html
 
 
 def test_terceiro_membro_opcional(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     id_ = criar_licitacao(client)
     assert "Membro da equipe (3)" not in client.get(f"/licitacoes/{id_}").get_data(as_text=True)
 
-    # Com 4 integrantes, 2 efetivos e 2 não efetivos não é minoria.
-    dados = dict(LICITACAO, membro3_id="4")
-    resp = post(client, f"/licitacoes/{id_}/editar", dados, f"/licitacoes/{id_}/editar")
+    # Com 4 integrantes, 2 efetivos e 2 não efetivos é empate: não é maioria.
+    editar = f"/licitacoes/{id_}/editar"
+    html = post(client, editar, dict(LICITACAO, membro3_id="4"), editar).get_data(as_text=True)
+    assert "Ao menos 3 dos 4 integrantes" in html
+
+    resp = post(client, editar, dict(LICITACAO, membro3_id="5"), editar)
     assert resp.status_code == 302
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
-    assert "Membro da equipe (3)" in pagina and "Dora Temporária" in pagina
-    assert "Beto Efetivo, Caio Comissionado, Dora Temporária" in client.get("/").get_data(
+    assert "Membro da equipe (3)" in pagina and "Eva Efetiva" in pagina
+    assert "Beto Efetivo, Caio Comissionado, Eva Efetiva" in client.get("/").get_data(
         as_text=True)
 
 
 def test_suspensao_e_remarcacao_antes_da_sessao(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     id_ = criar_licitacao(client)
 
     # Suspensão não é feita pelo formulário comum.
-    html = post(client, f"/licitacoes/{id_}/editar", dict(LICITACAO, status="Suspensa"),
+    html = post(client, f"/licitacoes/{id_}/editar", dict(LICITACAO, status="suspensa"),
                 f"/licitacoes/{id_}/editar").get_data(as_text=True)
     assert "Suspender / remarcar" in html
 
@@ -334,7 +337,7 @@ def test_suspensao_e_remarcacao_antes_da_sessao(client):
 
 
 def test_suspensao_para_analise_e_continuacao_com_sessao_em_andamento(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     id_ = criar_licitacao(client)
     abrir_sessao(client, id_)
 
@@ -381,28 +384,31 @@ def test_membro_impedido_com_sessao_em_andamento_pode_ser_mantido(client):
     resp = gestor_registra_ferias(client, 2, SESSAO, SESSAO + timedelta(days=3))
     html = client.get(resp.headers["Location"]).get_data(as_text=True)
     assert "Atenção: Beto Efetivo está escalado(a)" in html and "PE 010/2026" in html
-    painel = client.get("/").get_data(as_text=True)
-    assert "Membro de equipe impedido" in painel and "Trocar ou manter o membro" in painel
+    # O aviso fica na licitação (e na edição), não no painel inicial.
+    assert "Membro de equipe impedido" not in client.get("/").get_data(as_text=True)
+    assert "Membro impedido na data da sessão" in client.get(f"/licitacoes/{id_}").get_data(
+        as_text=True)
 
     editar = f"/licitacoes/{id_}/editar"
-    dados = dict(LICITACAO, status="Em andamento")
+    dados = dict(LICITACAO, status="andamento")
     html = post(client, editar, dados, editar).get_data(as_text=True)
     assert "troque o membro ou marque" in html and 'name="manter_impedidos"' in html
 
     assert post(client, editar, dict(dados, manter_impedidos="1"), editar).status_code == 302
-    assert "Membro de equipe impedido" not in client.get("/").get_data(as_text=True)
+    assert "Membro impedido na data da sessão" not in client.get(f"/licitacoes/{id_}").get_data(
+        as_text=True)
     assert "Mantido membro impedido" in client.get(f"/licitacoes/{id_}").get_data(as_text=True)
 
 
 def test_whatsapp_gera_imagem_de_celular(client):
     from PIL import Image
 
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     id_ = criar_licitacao(client)
     post(client, "/licitacoes/nova", dict(LICITACAO, numero_processo="2026.HOMOLOG",
-                                          status="Homologada"), "/licitacoes/nova")
+                                          status="homologada"), "/licitacoes/nova")
     post(client, "/licitacoes/nova", dict(LICITACAO, numero_processo="2026.PLANEJ",
-                                          status="Em planejamento"), "/licitacoes/nova")
+                                          status="planejamento"), "/licitacoes/nova")
     html = client.get("/licitacoes/whatsapp").get_data(as_text=True)
     assert "/licitacoes/whatsapp/1.png" in html and "/licitacoes/whatsapp/2.png" not in html
     assert "PE 010/2026" in html and f"Sessão: {SESSAO:%d/%m/%Y} às 09:30" in html
@@ -415,7 +421,7 @@ def test_whatsapp_gera_imagem_de_celular(client):
     assert client.get(f"/licitacoes/{id_}/whatsapp.png").mimetype == "image/png"
 
     for n in range(8):
-        post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital=f"PE {n:03d}/2026"),
+        post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital=f"{n:03d}/2026"),
              "/licitacoes/nova")
     html = client.get("/licitacoes/whatsapp").get_data(as_text=True)
     assert "/licitacoes/whatsapp/2.png" in html
@@ -423,17 +429,150 @@ def test_whatsapp_gera_imagem_de_celular(client):
 
 
 def test_painel_mostra_sessoes_alem_de_30_dias(client):
-    entrar(client, "operador")
+    entrar(client, "pregoeiro")
     longe = (date.today() + timedelta(days=200)).isoformat() + "T09:00"
-    post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital="PE 999/2027",
+    post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital="999/2027",
                                           data_sessao=longe), "/licitacoes/nova")
     assert "PE 999/2027" in client.get("/").get_data(as_text=True)
 
 
-def test_banco_antigo_recebe_colunas_novas(tmp_path):
+def sair(client):
+    client.post("/logout", data={"_csrf": csrf(client, "/")})
+
+
+def test_edital_digitado_sem_sigla(client, app):
+    entrar(client, "pregoeiro")
+    # Se a sigla for digitada por engano, ela é retirada; a tela mostra sigla + número.
+    id_ = int(post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital="pe 010/2026"),
+                   "/licitacoes/nova").headers["Location"].rsplit("/", 1)[1])
+    with app.app_context():
+        assert get_db().execute("SELECT numero_edital FROM licitacoes WHERE id = ?",
+                                (id_,)).fetchone()[0] == "010/2026"
+    assert "PE 010/2026" in client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    html = post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital="ABC 1/2026"),
+                "/licitacoes/nova").get_data(as_text=True)
+    assert "sem a sigla" in html
+    # A busca aceita sigla + número.
+    assert "PE 010/2026" in client.get("/licitacoes?q=PE+010").get_data(as_text=True)
+    assert "PE 010/2026" not in client.get("/licitacoes?q=PP+010").get_data(as_text=True)
+
+
+def test_administrador_altera_permissoes_dos_perfis(client):
+    entrar(client, "gestor")
+    assert client.get("/admin/perfis").status_code == 403
+    sair(client)
+
+    entrar(client, "administrador")
+    tela = client.get("/admin/perfis").get_data(as_text=True)
+    assert "Pregoeiro / Agente de Contratação" in tela
+    # Gestor perde "excluir"; pregoeiro ganha "afastamentos".
+    gestor = ["ver", "criar", "editar", "suspender", "servidores", "afastamentos", "auditoria",
+              "parametros"]
+    post(client, "/admin/perfis", {"perm_gestor": gestor,
+                                   "perm_pregoeiro": ["ver", "criar", "editar", "suspender",
+                                                      "afastamentos"],
+                                   "perm_consulta": ["ver"]}, "/admin/perfis")
+    assert "Alteração de permissões" in client.get("/admin/auditoria").get_data(as_text=True)
+    sair(client)
+
+    entrar(client, "gestor")
+    id_ = criar_licitacao(client)
+    assert post(client, f"/licitacoes/{id_}/excluir", {}).status_code == 403
+    sair(client)
+    entrar(client, "pregoeiro")
+    assert client.get("/admin/servidores/2/afastamentos").status_code == 200
+
+
+def test_gestor_altera_parametros(client):
+    entrar(client, "pregoeiro")
+    id_ = criar_licitacao(client)
+    assert client.get("/admin/parametros").status_code == 403
+    sair(client)
+
+    entrar(client, "gestor")
+    assert client.get("/admin/parametros").status_code == 200
+    post(client, "/admin/parametros/geral", {"nome_orgao": "Secretaria de Saúde"},
+         "/admin/parametros")
+    assert "Secretaria de Saúde" in client.get("/").get_data(as_text=True)
+
+    # Modalidade: nova sigla, novo nome e nova cor valem para as licitações existentes.
+    post(client, "/admin/modalidades/1/editar",
+         {"nome": "Pregão Eletrônico SRP", "sigla": "pes", "cor": "#123456", "ordem": "0",
+          "ativa": "1", "exige_equipe": "1", "rotulo_condutor": "Pregoeiro(a)"},
+         "/admin/modalidades/1/editar")
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "PES 010/2026" in pagina and "Pregão Eletrônico SRP" in pagina
+    assert "--destaque: #123456" in client.get("/").get_data(as_text=True)
+
+    # Situação do sistema: renomeia, mas não exclui.
+    post(client, "/admin/situacoes/publicado/editar",
+         {"nome": "Aviso publicado", "cor": "#0000aa", "ordem": "1"},
+         "/admin/situacoes/publicado/editar")
+    assert "Aviso publicado" in client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    post(client, "/admin/situacoes/publicado/excluir", {})
+    assert "Aviso publicado" in client.get("/admin/parametros").get_data(as_text=True)
+
+    # Nova situação de encerramento, que depois pode ser excluída por não estar em uso.
+    post(client, "/admin/situacoes/nova", {"nome": "Cancelada", "cor": "#990000",
+                                           "fase": "encerrada", "ordem": "20", "ativa": "1"},
+         "/admin/situacoes/nova")
+    assert "Cancelada" in client.get("/licitacoes/nova").get_data(as_text=True)
+    post(client, "/admin/situacoes/cancelada/excluir", {})
+    assert "Cancelada" not in client.get("/admin/parametros").get_data(as_text=True)
+
+
+def test_painel_licitacoes_em_andamento(client):
+    entrar(client, "pregoeiro")
+    publicada = criar_licitacao(client)
+    aberta = criar_licitacao(client)
+    abrir_sessao(client, aberta)
+    url = f"/licitacoes/{aberta}/suspender"
+    post(client, url, {"tipo": "suspensa_analise", "suspensa_em": "2026-10-21T11:00"}, url)
+    antes = criar_licitacao(client)
+    url = f"/licitacoes/{antes}/suspender"
+    post(client, url, {"tipo": "suspensa_antes", "suspensa_em": "2026-10-21T11:00"}, url)
+
+    html = client.get("/").get_data(as_text=True)
+    em_andamento = html.split("Licitações em andamento")[1].split("Suspensas antes")[0]
+    assert "suspensa p/ análise documental" in em_andamento
+    assert "Edital publicado" in em_andamento
+    assert "sessão não aberta" not in em_andamento
+    assert "sessão não aberta" in html.split("Suspensas antes")[1]
+    assert publicada
+
+
+def test_ordenacao_e_colunas_do_painel(client):
+    entrar(client, "pregoeiro")
+    for numero in ("002/2026", "010/2025", "001/2026"):
+        post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital=numero),
+             "/licitacoes/nova")
+
+    html = client.get("/?ordem=edital&dir=desc").get_data(as_text=True)
+    assert html.index("PE 002/2026") < html.index("PE 001/2026") < html.index("PE 010/2025")
+    # A escolha fica guardada para as próximas visitas.
+    html = client.get("/").get_data(as_text=True)
+    assert html.index("PE 002/2026") < html.index("PE 001/2026")
+
+    post(client, "/preferencias/tabela",
+         {"coluna": ["situacao", "edital", "objeto", "data"],
+          "visivel": ["situacao", "edital", "data"], "ordem": "edital", "direcao": "asc",
+          "voltar": "/"}, "/")
+    html = client.get("/").get_data(as_text=True)
+    tabela = html.split("Licitações em andamento")[1]
+    assert tabela.index(">Situação") < tabela.index(">Edital") < tabela.index(">Data e hora")
+    assert ">Objeto" not in tabela.split("</thead>")[0]
+    assert html.index("PE 010/2025") < html.index("PE 001/2026") < html.index("PE 002/2026")
+
+
+def test_banco_antigo_e_convertido(tmp_path):
     import sqlite3
     caminho = tmp_path / "antigo.sqlite3"
     conn = sqlite3.connect(caminho)
+    conn.execute("CREATE TABLE usuarios (id INTEGER PRIMARY KEY, nome TEXT, login TEXT,"
+                 " email TEXT, senha_hash TEXT, perfil TEXT, ativo INTEGER, trocar_senha INTEGER,"
+                 " criado_em TEXT)")
+    conn.execute("INSERT INTO usuarios (nome, login, senha_hash, perfil, ativo, trocar_senha)"
+                 " VALUES ('Op', 'op', 'x', 'operador', 1, 0)")
     # Tabela como era na versão anterior, sem as colunas novas.
     conn.execute("CREATE TABLE licitacoes (id INTEGER PRIMARY KEY, numero_processo TEXT,"
                  " numero_edital TEXT, modalidade TEXT, objeto TEXT, data_publicacao TEXT,"
@@ -441,8 +580,14 @@ def test_banco_antigo_recebe_colunas_novas(tmp_path):
                  " membro1_id INTEGER, membro2_id INTEGER, valor_estimado REAL, status TEXT,"
                  " suspensa_em TEXT, motivo_suspensao TEXT, observacoes TEXT, criado_por INTEGER,"
                  " criado_em TEXT, atualizado_em TEXT)")
+    conn.execute("INSERT INTO licitacoes (numero_processo, numero_edital, modalidade, objeto,"
+                 " status) VALUES ('1', 'PE 012/2026', 'Pregão Eletrônico', 'x', 'Em andamento')")
     conn.commit()
     conn.close()
     create_app({"TESTING": True, "DATABASE": str(caminho)})
-    colunas = {c[1] for c in sqlite3.connect(caminho).execute("PRAGMA table_info(licitacoes)")}
+    conn = sqlite3.connect(caminho)
+    colunas = {c[1] for c in conn.execute("PRAGMA table_info(licitacoes)")}
     assert {"membro3_id", "ocorrencia", "impedimentos_mantidos"} <= colunas
+    assert conn.execute("SELECT numero_edital, status FROM licitacoes").fetchone() == (
+        "012/2026", "andamento")
+    assert conn.execute("SELECT perfil FROM usuarios").fetchone()[0] == "pregoeiro"

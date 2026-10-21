@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .perfis import CORES_MODALIDADE, CREDENCIAMENTO
+from . import parametros
 
 LARGURA, ALTURA = 1080, 1920
 MARGEM = 48
@@ -74,34 +74,35 @@ def _data_hora(valor):
 
 def conteudo(lic):
     """Dados de um cartão: edital, modalidade, data e hora, objeto e equipe."""
+    fase = parametros.fase(lic["status"])
     alerta = True
-    if lic["modalidade"] == CREDENCIAMENTO:
+    if parametros.eh_credenciamento(lic["modalidade"]):
         alerta = False
         quando = "Credenciamento aberto"
         if lic["vigencia_ate"]:
             quando += f" — vigente até {date.fromisoformat(lic['vigencia_ate']):%d/%m/%Y}"
-    elif lic["status"] == "Suspensa":
+    elif fase == "suspensa":
         quando = "SUSPENSA — sessão sem nova data"
         if lic["suspensa_em"]:
             quando += f" (desde {_data_hora(lic['suspensa_em'])})"
-    elif lic["status"] == "Em andamento" and lic["suspensa_em"]:
+    elif fase == "andamento" and lic["suspensa_em"]:
         quando = f"EM ANDAMENTO — suspensa para análise documental desde " \
                  f"{_data_hora(lic['suspensa_em'])}"
     elif not lic["data_sessao"]:
         quando = "Sessão: data a definir"
-    elif lic["status"] == "Remarcada":
+    elif fase == "remarcada":
         quando = f"REMARCADA para {_data_hora(lic['data_sessao'])}"
         if lic["ocorrencia"] == "remarcada_retificacao":
             quando += " (edital retificado)"
-    elif lic["status"] == "Em andamento" and lic["ocorrencia"] == "continuacao":
+    elif fase == "andamento" and lic["ocorrencia"] == "continuacao":
         quando = f"Continuação da sessão: {_data_hora(lic['data_sessao'])}"
     else:
         alerta = False
         quando = f"Sessão: {_data_hora(lic['data_sessao'])}"
-        if lic["status"] == "Em andamento":
+        if fase == "andamento":
             quando += " (em andamento)"
 
-    funcao = "Pregoeiro(a)" if lic["modalidade"].startswith("Pregão") else "Agente de contratação"
+    funcao = parametros.modalidade(lic["modalidade"])["rotulo_condutor"]
     linhas_equipe = []
     if lic["agente_nome"]:
         linhas_equipe.append(f"{funcao}: {lic['agente_nome']}")
@@ -112,9 +113,9 @@ def conteudo(lic):
     if not linhas_equipe:
         linhas_equipe.append("Equipe: a definir")
 
-    fundo, destaque = CORES_MODALIDADE.get(lic["modalidade"], ("#ffffff", "#4b5563"))
+    fundo, destaque = parametros.cores_modalidade(lic["modalidade"])
     return {
-        "titulo": lic["numero_edital"] or f"Processo {lic['numero_processo']}",
+        "titulo": parametros.edital(lic),
         "modalidade": lic["modalidade"],
         "quando": quando,
         "alerta": alerta,

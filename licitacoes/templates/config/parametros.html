@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block titulo %}Configurações{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Configurações</h1>
+  {% if g.usuario.perfil == 'administrador' %}<div class="acoes"><a class="botao" href="{{ url_for('config.perfis') }}">Permissões dos perfis</a></div>{% endif %}
+</div>
+
+<section class="cartao">
+  <h2>Cabeçalho</h2>
+  <form method="post" action="{{ url_for('config.salvar_geral') }}" class="linha-form">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Nome da secretaria / órgão<input name="nome_orgao" required value="{{ nome_orgao }}"></label>
+    <button class="primario">Salvar</button>
+  </form>
+</section>
+
+<section class="cartao">
+  <div class="cabecalho">
+    <h2>Modalidades e siglas</h2>
+    <a class="botao" href="{{ url_for('config.modalidade') }}">+ Nova modalidade</a>
+  </div>
+  <p class="sutil">A sigla acompanha o número do edital nas telas e na imagem (ex.: PE 007/2026). A cor é usada nas linhas do painel.</p>
+  <div class="tabela-rolagem">
+  <table class="licitacoes">
+    <thead><tr><th>Ordem</th><th>Modalidade</th><th>Sigla</th><th>Tipo</th><th>Quem conduz</th><th>Em uso</th><th></th></tr></thead>
+    <tbody>
+    {% for m in modalidades %}
+      {% set cor = cor_modalidade(m.nome) %}
+      <tr class="linha-modalidade {% if not m.ativa %}inativo{% endif %}" style="--fundo: {{ cor[0] }}; --destaque: {{ cor[1] }};">
+        <td>{{ m.ordem }}</td>
+        <td><strong>{{ m.nome }}</strong>{% if not m.ativa %} <small>(inativa)</small>{% endif %}</td>
+        <td><span class="edital">{{ m.sigla }}</span></td>
+        <td>{{ 'Credenciamento (vigência anual)' if m.credenciamento else 'Com sessão pública' }}{% if not m.exige_equipe %}<br><small>equipe opcional</small>{% endif %}</td>
+        <td>{{ m.rotulo_condutor }}</td>
+        <td>{{ uso_modalidade.get(m.nome, 0) }}</td>
+        <td class="acoes">
+          <a href="{{ url_for('config.modalidade', id_=m.id) }}">Editar</a>
+          {% if not uso_modalidade.get(m.nome) %}
+          <form method="post" action="{{ url_for('config.excluir_modalidade', id_=m.id) }}" onsubmit="return confirm('Excluir a modalidade {{ m.nome }}?');">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="link">Excluir</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="cartao">
+  <div class="cabecalho">
+    <h2>Situações da licitação</h2>
+    <a class="botao" href="{{ url_for('config.situacao') }}">+ Nova situação</a>
+  </div>
+  <p class="sutil">O comportamento do sistema segue a <strong>fase</strong> de cada situação. As situações do sistema podem ser renomeadas e recoloridas, mas não excluídas.</p>
+  <div class="tabela-rolagem">
+  <table>
+    <thead><tr><th>Ordem</th><th>Situação</th><th>Fase</th><th>Em uso</th><th></th></tr></thead>
+    <tbody>
+    {% for s in situacoes %}
+      {% set cor = cores_situacao(s.chave) %}
+      <tr class="{% if not s.ativa %}inativo{% endif %}">
+        <td>{{ s.ordem }}</td>
+        <td><span class="selo" style="background: {{ cor[0] }}; color: {{ cor[1] }};">{{ s.nome }}</span>{% if s.sistema %} <small>(sistema)</small>{% endif %}{% if not s.ativa %} <small>(inativa)</small>{% endif %}</td>
+        <td>{{ fases[s.fase] }}</td>
+        <td>{{ uso_situacao.get(s.chave, 0) }}</td>
+        <td class="acoes">
+          <a href="{{ url_for('config.situacao', chave=s.chave) }}">Editar</a>
+          {% if not s.sistema and not uso_situacao.get(s.chave) %}
+          <form method="post" action="{{ url_for('config.excluir_situacao', chave=s.chave) }}" onsubmit="return confirm('Excluir a situação {{ s.nome }}?');">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="link">Excluir</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

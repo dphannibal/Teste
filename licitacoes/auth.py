@@ -7,7 +7,7 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import get_db, registrar
-from .perfis import tem_permissao
+from .parametros import tem_permissao
 
 bp = Blueprint("auth", __name__)
 
@@ -41,12 +41,13 @@ def login_obrigatorio(view):
     return wrapper
 
 
-def permissao(nome):
+def permissao(*nomes):
+    """Exige ao menos uma das permissões informadas."""
     def decorador(view):
         @functools.wraps(view)
         @login_obrigatorio
         def wrapper(*args, **kwargs):
-            if not tem_permissao(g.usuario["perfil"], nome):
+            if not any(tem_permissao(g.usuario["perfil"], n) for n in nomes):
                 abort(403)
             return view(*args, **kwargs)
 

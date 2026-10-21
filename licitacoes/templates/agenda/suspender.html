@@ -2,9 +2,9 @@
 {% from '_macros.html' import situacao_selo with context %}
 {% block titulo %}Suspender / remarcar{% endblock %}
 {% block conteudo %}
-<h1>Suspender ou remarcar — {{ lic.numero_edital or lic.numero_processo }}</h1>
+<h1>Suspender ou remarcar — {{ edital(lic) }}</h1>
 <p class="sutil">{{ lic.modalidade }} · {{ situacao_selo(lic) }} · Sessão: <strong>{{ lic.data_sessao|data if lic.data_sessao else 'a definir' }}</strong>.
-{% if lic.status == 'Em andamento' %}A sessão pública já foi aberta.{% else %}A sessão pública ainda não foi aberta.{% endif %}</p>
+{% if fase == 'andamento' %}A sessão pública já foi aberta.{% else %}A sessão pública ainda não foi aberta.{% endif %}</p>
 <form method="post" class="cartao formulario estreito">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <fieldset>

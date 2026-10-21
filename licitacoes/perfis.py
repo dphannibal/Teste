@@ -1,85 +1,92 @@
-"""Perfis de acesso, permissões e tabelas de domínio."""
+"""Perfis, permissões e valores padrão dos parâmetros.
+
+Modalidades, situações, permissões por perfil e nome do órgão ficam no banco e são
+alterados pelas telas de configuração; aqui estão apenas os valores iniciais.
+"""
 
 PERFIS = {
     "administrador": "Administrador",
     "gestor": "Gestor",
-    "operador": "Operador",
+    "pregoeiro": "Pregoeiro / Agente de Contratação",
     "consulta": "Consulta",
 }
 
-DESCRICAO_PERFIS = {
-    "administrador": "Acesso total, incluindo cadastro de usuários e auditoria.",
-    "gestor": "Cadastra, edita e exclui licitações; mantém o cadastro de servidores; "
-              "consulta a auditoria.",
-    "operador": "Cadastra e edita licitações, registra suspensões e remarcações (não exclui).",
-    "consulta": "Apenas visualiza a agenda e as licitações.",
-}
-
-# Permissão -> perfis que a possuem.
+# Permissão -> descrição exibida na tela de perfis.
 PERMISSOES = {
-    "ver": {"administrador", "gestor", "operador", "consulta"},
-    "criar": {"administrador", "gestor", "operador"},
-    "editar": {"administrador", "gestor", "operador"},
-    "suspender": {"administrador", "gestor", "operador"},  # suspender / remarcar sessão
-    "excluir": {"administrador", "gestor"},
-    "servidores": {"administrador", "gestor"},
-    "auditoria": {"administrador", "gestor"},
-    "usuarios": {"administrador"},
+    "ver": "Ver painel, calendário e licitações",
+    "criar": "Cadastrar licitações",
+    "editar": "Editar licitações e renovar credenciamentos",
+    "suspender": "Suspender e remarcar sessões",
+    "excluir": "Excluir licitações",
+    "servidores": "Cadastrar servidores",
+    "afastamentos": "Registrar férias e afastamentos",
+    "auditoria": "Consultar a auditoria",
+    "parametros": "Alterar parâmetros: nome do órgão, modalidades, siglas, cores e situações",
+    "usuarios": "Gerenciar usuários",
 }
 
-CREDENCIAMENTO = "Credenciamento"
+# O administrador sempre tem todas as permissões (evita perder o acesso ao sistema),
+# e só ele altera as permissões dos perfis.
+PERFIL_TOTAL = "administrador"
 
-# Modalidades da Lei nº 14.133/2021, contratações diretas e credenciamento.
-MODALIDADES = [
-    "Pregão Eletrônico",
-    "Pregão Presencial",
-    "Concorrência Eletrônica",
-    "Concorrência Presencial",
-    "Concurso",
-    "Leilão",
-    "Diálogo Competitivo",
-    "Dispensa Eletrônica",
-    "Inexigibilidade",
-    CREDENCIAMENTO,
+PERMISSOES_PADRAO = {
+    "gestor": {"ver", "criar", "editar", "suspender", "excluir", "servidores", "afastamentos",
+               "auditoria", "parametros"},
+    "pregoeiro": {"ver", "criar", "editar", "suspender"},
+    "consulta": {"ver"},
+}
+
+# (nome, sigla, cor, aberta com vigência anual, exige equipe, quem conduz)
+MODALIDADES_PADRAO = [
+    ("Pregão Eletrônico", "PE", "#1e7b3c", 0, 1, "Pregoeiro(a)"),
+    ("Pregão Presencial", "PP", "#b42318", 0, 1, "Pregoeiro(a)"),
+    ("Concorrência Eletrônica", "CE", "#1d4f91", 0, 1, "Agente de contratação"),
+    ("Concorrência Presencial", "CP", "#b35a00", 0, 1, "Agente de contratação"),
+    ("Concurso", "CS", "#6a3fb5", 0, 1, "Agente de contratação"),
+    ("Leilão", "LE", "#8a6d00", 0, 1, "Agente de contratação"),
+    ("Diálogo Competitivo", "DC", "#0f7676", 0, 1, "Agente de contratação"),
+    ("Dispensa Eletrônica", "DE", "#7a5230", 0, 1, "Agente de contratação"),
+    ("Inexigibilidade", "IN", "#4b5563", 0, 0, "Agente de contratação"),
+    ("Credenciamento", "CR", "#a3266b", 1, 1, "Agente de contratação"),
 ]
 
-# Modalidade -> (fundo suave, cor de destaque), usadas nas linhas das tabelas e na imagem.
-CORES_MODALIDADE = {
-    "Pregão Eletrônico": ("#e6f5ea", "#1e7b3c"),
-    "Pregão Presencial": ("#fbe7e7", "#b42318"),
-    "Concorrência Eletrônica": ("#e5eefb", "#1d4f91"),
-    "Concorrência Presencial": ("#fdefdd", "#b35a00"),
-    "Concurso": ("#efe7fb", "#6a3fb5"),
-    "Leilão": ("#fbf5d6", "#8a6d00"),
-    "Diálogo Competitivo": ("#e1f4f4", "#0f7676"),
-    "Dispensa Eletrônica": ("#f3ece3", "#7a5230"),
-    "Inexigibilidade": ("#eceef1", "#4b5563"),
-    CREDENCIAMENTO: ("#fbe8f2", "#a3266b"),
+# Fase -> descrição. O comportamento do sistema depende da fase, não do nome da situação.
+FASES = {
+    "planejamento": "Em planejamento (edital ainda não publicado)",
+    "publicada": "Edital publicado, sessão ainda não aberta",
+    "remarcada": "Sessão remarcada antes da abertura",
+    "suspensa": "Suspensa antes da abertura da sessão",
+    "andamento": "Em andamento (sessão aberta)",
+    "concluida": "Concluída com sucesso",
+    "encerrada": "Encerrada sem sucesso (deserta, fracassada, revogada…)",
 }
 
-# Situação -> classe CSS usada para colorir.
-STATUS = {
-    "Em planejamento": "cinza",
-    "Edital publicado": "azul",
-    "Remarcada": "roxo",
-    "Em andamento": "amarelo",
-    "Suspensa": "laranja",
-    "Homologada": "verde",
-    "Concluída": "verde",
-    "Deserta": "vermelho",
-    "Fracassada": "vermelho",
-    "Revogada": "vermelho",
-    "Anulada": "vermelho",
-}
+# (chave, nome, cor, fase, situação do sistema)
+# As do sistema são usadas pelas ações (suspender, remarcar…): podem ser renomeadas e
+# recoloridas, mas não excluídas nem mudar de fase.
+SITUACOES_PADRAO = [
+    ("planejamento", "Em planejamento", "#475467", "planejamento", 1),
+    ("publicado", "Edital publicado", "#1d4f91", "publicada", 1),
+    ("remarcada", "Remarcada", "#5b2ca0", "remarcada", 1),
+    ("andamento", "Em andamento", "#7a5a00", "andamento", 1),
+    ("suspensa", "Suspensa", "#9a3d00", "suspensa", 1),
+    ("homologada", "Homologada", "#146c2e", "concluida", 0),
+    ("concluida", "Concluída", "#146c2e", "concluida", 1),
+    ("deserta", "Deserta", "#9b1c13", "encerrada", 0),
+    ("fracassada", "Fracassada", "#9b1c13", "encerrada", 0),
+    ("revogada", "Revogada", "#9b1c13", "encerrada", 0),
+    ("anulada", "Anulada", "#9b1c13", "encerrada", 0),
+]
 
-# Situações que ainda exigem acompanhamento na agenda.
-STATUS_ABERTOS = ["Em planejamento", "Edital publicado", "Remarcada", "Em andamento", "Suspensa"]
-
-# Situações divulgadas ao público (exportação para WhatsApp).
-STATUS_DIVULGAVEIS = ["Edital publicado", "Remarcada", "Em andamento", "Suspensa"]
-
-# O credenciamento fica aberto indefinidamente, renovado a cada ano.
-STATUS_CREDENCIAMENTO = ["Em andamento", "Concluída"]
+FASES_ABERTAS = ("planejamento", "publicada", "remarcada", "suspensa", "andamento")
+FASES_ANTES_DA_SESSAO = ("publicada", "remarcada", "suspensa")
+# Painel "Licitações em andamento": publicadas, remarcadas e com sessão aberta
+# (inclusive as suspensas depois de abertas, para análise documental).
+FASES_EM_ANDAMENTO = ("publicada", "remarcada", "andamento")
+FASES_DIVULGAVEIS = ("publicada", "remarcada", "suspensa", "andamento")
+FASES_CREDENCIAMENTO = ("andamento", "concluida")
+# Fases só alcançadas pela ação "Suspender / remarcar".
+FASES_DA_ACAO = ("suspensa", "remarcada")
 
 # Vínculo funcional do servidor. Os do quadro permanente contam como "efetivos"
 # na composição da equipe (art. 8º da Lei nº 14.133/2021).
@@ -133,6 +140,16 @@ OCORRENCIAS = {
     },
 }
 
-
-def tem_permissao(perfil, permissao):
-    return perfil in PERMISSOES.get(permissao, set())
+# Colunas das tabelas de licitações (ordem e visibilidade escolhidas por usuário).
+COLUNAS = {
+    "edital": "Edital",
+    "data": "Data e hora",
+    "modalidade": "Modalidade",
+    "objeto": "Objeto",
+    "equipe": "Equipe",
+    "situacao": "Situação",
+    "local": "Local / plataforma",
+    "valor": "Valor estimado",
+    "publicacao": "Publicação",
+}
+COLUNAS_PADRAO = ["edital", "data", "modalidade", "objeto", "equipe", "situacao"]

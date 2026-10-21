@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
 {% from '_macros.html' import situacao_selo, estilo_modalidade with context %}
-{% block titulo %}{{ lic.numero_edital or lic.numero_processo }}{% endblock %}
+{% block titulo %}{{ edital(lic) }}{% endblock %}
 {% block conteudo %}
-{% set cred = lic.modalidade == credenciamento %}
+{% set cred = credenciamento %}
 <div class="cabecalho titulo-licitacao" style="{{ estilo_modalidade(lic.modalidade) }}">
-  <h1><span class="edital grande">{{ lic.numero_edital or 'Sem nº de edital' }}</span> <span class="modalidade">{{ lic.modalidade }}</span> {{ situacao_selo(lic) }}</h1>
+  <h1><span class="edital grande">{{ edital(lic) }}</span> <span class="modalidade">{{ lic.modalidade }}</span> {{ situacao_selo(lic) }}</h1>
   <div class="acoes">
     {% if pode('editar') %}<a class="botao primario" href="{{ url_for('agenda.editar', id_=lic.id) }}">Editar</a>{% endif %}
     {% if pode('suspender') and pode_suspender %}<a class="botao" href="{{ url_for('agenda.suspender', id_=lic.id) }}">Suspender / remarcar</a>{% endif %}
-    {% if cred and pode('editar') and lic.status == 'Em andamento' %}
+    {% if cred and pode('editar') and fase == 'andamento' %}
     <form method="post" action="{{ url_for('agenda.renovar', id_=lic.id) }}" onsubmit="return confirm('Renovar a vigência do credenciamento por mais um ano?');">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <button>Renovar por 1 ano</button>
@@ -26,7 +26,7 @@
 
 {% if lic.suspensa_em %}
 <div class="aviso aviso-alerta"><strong>{{ OCORRENCIAS[lic.ocorrencia].rotulo if lic.ocorrencia in OCORRENCIAS else 'Suspensa' }}</strong> desde {{ lic.suspensa_em|data }}.{% if lic.motivo_suspensao %} Motivo: {{ lic.motivo_suspensao }}{% endif %}</div>
-{% elif lic.ocorrencia in OCORRENCIAS and lic.status in ['Remarcada', 'Em andamento'] %}
+{% elif lic.ocorrencia in OCORRENCIAS and fase in ['remarcada', 'andamento'] %}
 <div class="aviso aviso-info"><strong>{{ OCORRENCIAS[lic.ocorrencia].rotulo }}</strong> para {{ lic.data_sessao|data }}.</div>
 {% endif %}
 {% for alerta in alertas_equipe %}<div class="aviso aviso-erro">{{ alerta }}{% if pode('editar') %} <a href="{{ url_for('agenda.editar', id_=lic.id) }}">Editar equipe</a>{% endif %}</div>{% endfor %}

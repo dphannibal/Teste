@@ -7,8 +7,8 @@ import click
 from flask import Flask, abort, g, render_template, request, session
 from werkzeug.security import generate_password_hash
 
-from . import db
-from .perfis import PERFIS, STATUS, tem_permissao
+from . import db, parametros
+from .perfis import PERFIS
 
 
 def create_app(config=None):
@@ -32,11 +32,12 @@ def create_app(config=None):
     _registrar_erros(app)
     _registrar_comandos(app)
 
-    from . import admin, agenda, auth
+    from . import admin, agenda, auth, config as configuracoes
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(agenda.bp)
     app.register_blueprint(admin.bp)
+    app.register_blueprint(configuracoes.bp)
 
     with app.app_context():
         db.init_db()
@@ -87,10 +88,16 @@ def _registrar_filtros(app):
         usuario = g.get("usuario")
         return {
             "csrf_token": csrf_token,
-            "pode": lambda p: bool(usuario) and tem_permissao(usuario["perfil"], p),
+            "pode": lambda p: bool(usuario) and parametros.tem_permissao(usuario["perfil"], p),
             "PERFIS": PERFIS,
-            "STATUS": STATUS,
-            "nome_orgao": app.config["NOME_ORGAO"],
+            "nome_orgao": parametros.nome_orgao(),
+            "edital": parametros.edital,
+            "cor_modalidade": parametros.cores_modalidade,
+            "cores_situacao": parametros.cores_situacao,
+            "nome_situacao": lambda chave: parametros.situacao(chave)["nome"],
+            "situacoes_ativas": lambda: parametros.situacoes(somente_ativas=True),
+            "fase_de": parametros.fase,
+            "modalidade_de": parametros.modalidade,
         }
 
 

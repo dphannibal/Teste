@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import tabela, legenda_modalidades with context %}
+{% from '_macros.html' import tabela, legenda_modalidades, personalizar with context %}
 {% block titulo %}Licitações{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
@@ -12,15 +12,15 @@
 </div>
 
 <form class="filtros cartao" method="get">
-  <label>Buscar <input name="q" value="{{ filtros.q }}" placeholder="Objeto, processo ou edital"></label>
+  <label>Buscar <input name="q" value="{{ filtros.q }}" placeholder="Objeto, processo ou edital (ex.: PE 007)"></label>
   <label>Modalidade
     <select name="modalidade"><option value="">Todas</option>
-      {% for m in modalidades %}<option {% if filtros.modalidade == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+      {% for m in modalidades %}<option value="{{ m.nome }}" {% if filtros.modalidade == m.nome %}selected{% endif %}>{{ m.nome }} ({{ m.sigla }})</option>{% endfor %}
     </select>
   </label>
   <label>Situação
     <select name="status"><option value="">Todas</option>
-      {% for s in STATUS %}<option {% if filtros.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      {% for s in situacoes %}<option value="{{ s.chave }}" {% if filtros.status == s.chave %}selected{% endif %}>{{ s.nome }}</option>{% endfor %}
     </select>
   </label>
   <label>Servidor na equipe
@@ -33,7 +33,8 @@
   <div class="acoes"><button class="primario">Filtrar</button> <a href="{{ url_for('agenda.lista') }}">Limpar</a></div>
 </form>
 
+{{ personalizar() }}
 <p class="sutil">{{ licitacoes|length }} licitação(ões) encontrada(s).</p>
-{{ tabela(licitacoes) }}
-{{ legenda_modalidades(modalidades) }}
+{{ tabela(licitacoes, agora=agora) }}
+{{ legenda_modalidades(modalidades|map(attribute='nome')|list) }}
 {% endblock %}
