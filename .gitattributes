@@ -1,0 +1,2 @@
+*.bat text eol=crlf
+*.url text eol=crlf

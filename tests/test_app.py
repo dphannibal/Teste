@@ -915,3 +915,80 @@ def test_banco_da_versao_anterior_recebe_recursos_e_ajustes(tmp_path):
         " 'Dia do Servidor Público')")} == {"feriado"}
     assert conn.execute("SELECT 1 FROM permissoes WHERE perfil = 'pregoeiro'"
                         " AND permissao = 'recursos'").fetchone()
+
+
+def test_edicao_simultanea_nao_sobrescreve(app, client):
+    entrar(client, "pregoeiro")
+    id_ = criar_licitacao(client)
+    outro = app.test_client()
+    entrar(outro, "gestor")
+
+    editar = f"/licitacoes/{id_}/editar"
+    # Os dois abrem a edição ao mesmo tempo (mesma versão da licitação).
+    token_1, token_2 = csrf(client, editar), csrf(outro, editar)
+    versao = re.search(r'name="versao" value="(\d+)"', client.get(editar).get_data(
+        as_text=True)).group(1)
+
+    resp = client.post(editar, data=dict(LICITACAO, objeto="Alterado pelo pregoeiro",
+                                         versao=versao, _csrf=token_1))
+    assert resp.status_code == 302
+    html = outro.post(editar, data=dict(LICITACAO, objeto="Alterado pelo gestor",
+                                        versao=versao, _csrf=token_2)).get_data(as_text=True)
+    assert "foi alterada por Pregoeiro" in html and "não foram salvas" in html
+    assert "Alterado pelo pregoeiro" in html  # o formulário volta com os dados atuais
+
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "Alterado pelo pregoeiro" in pagina and "Alterado pelo gestor" not in pagina
+    # Com a versão atual, a nova edição é aceita.
+    nova = re.search(r'name="versao" value="(\d+)"', html).group(1)
+    resp = outro.post(editar, data=dict(LICITACAO, objeto="Alterado pelo gestor",
+                                        versao=nova, _csrf=token_2))
+    assert resp.status_code == 302
+
+
+def test_varios_usuarios_cadastrando_ao_mesmo_tempo(app):
+    import threading
+
+    clientes = []
+    for _ in range(8):
+        c = app.test_client()
+        entrar(c, "pregoeiro")
+        clientes.append((c, csrf(c, "/licitacoes/nova")))
+    resultados = []
+
+    def cadastrar(cliente, token, n):
+        for i in range(5):
+            resp = cliente.post("/licitacoes/nova", data=dict(
+                LICITACAO, numero_processo=f"T{n}-{i}", numero_edital=f"{n}{i:02d}/2026",
+                _csrf=token))
+            resultados.append(resp.status_code)
+
+    tarefas = [threading.Thread(target=cadastrar, args=(c, t, n))
+               for n, (c, t) in enumerate(clientes)]
+    for t in tarefas:
+        t.start()
+    for t in tarefas:
+        t.join()
+
+    assert resultados.count(302) == 40
+    with app.app_context():
+        assert get_db().execute("SELECT COUNT(*) FROM licitacoes").fetchone()[0] == 40
+        assert get_db().execute("SELECT COUNT(*) FROM historico WHERE acao ="
+                                " 'Cadastro de licitação'").fetchone()[0] == 40
+
+
+def test_pasta_de_dados_fora_do_programa(tmp_path):
+    dados = tmp_path / "dados"
+    app = create_app({"TESTING": True, "PASTA_DADOS": str(dados)})
+    assert app.config["DATABASE"] == str(dados / "licitacoes.sqlite3")
+    assert (dados / "licitacoes.sqlite3").exists() and (dados / "secret_key").exists()
+    assert app.config["PASTA_ARQUIVOS"] == str(dados)
+
+
+def test_atalho_para_os_usuarios(tmp_path):
+    import servidor
+
+    caminho = servidor.criar_atalho(str(tmp_path), "http://SERVIDOR:8080/")
+    with open(caminho, "rb") as arquivo:
+        assert arquivo.read() == b"[InternetShortcut]\r\nURL=http://SERVIDOR:8080/\r\n"
+    assert all(not ip.startswith("127.") for ip in servidor.enderecos_ipv4())

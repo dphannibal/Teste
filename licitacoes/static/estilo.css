@@ -225,3 +225,29 @@ td.etapa-atual { font-weight: 700; text-decoration: underline; }
 .campo-data input[type=text] { flex: 1; border-radius: 6px 0 0 6px; }
 .botao-calendario { border-radius: 0 6px 6px 0; border-left: 0; padding: 0 .7rem; background: #fff center / 18px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6b7a' stroke-width='2'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4'/%3E%3C/svg%3E"); min-width: 2.4rem; }
 .data-nativa { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+
+/* Celular: menu recolhido e licitações em cartões */
+.menu-botao { display: none; background: transparent; color: #fff; border-color: rgba(255,255,255,.5); padding: .3rem .8rem; }
+@media (max-width: 700px) {
+  .topo { flex-wrap: wrap; gap: .5rem 1rem; }
+  .menu-botao { display: inline-block; margin-left: auto; }
+  .topo nav, .topo .usuario { display: none; }
+  .topo.menu-aberto nav, .topo.menu-aberto .usuario { display: flex; flex-basis: 100%; flex-wrap: wrap; }
+  .topo.menu-aberto nav { flex-direction: column; gap: 0; }
+  .topo.menu-aberto nav a { padding: .55rem 0; border-top: 1px solid rgba(255,255,255,.15); }
+  .topo.menu-aberto .usuario { padding: .5rem 0; border-top: 1px solid rgba(255,255,255,.3); }
+
+  table.licitacoes, table.licitacoes tbody, table.licitacoes tr, table.licitacoes td { display: block; width: 100%; }
+  table.licitacoes thead { display: none; }
+  table.licitacoes tr { margin-bottom: .7rem; border-radius: 8px; overflow: hidden; }
+  table.licitacoes tr.linha-modalidade { background: var(--fundo); border-left: 6px solid var(--destaque); }
+  table.licitacoes tr.linha-modalidade td, table.licitacoes tr.linha-modalidade td:first-child { border-left: 0; background: transparent; }
+  table.licitacoes td { padding: .3rem .8rem; white-space: normal; }
+  table.licitacoes td:first-child { padding-top: .7rem; }
+  table.licitacoes td:last-child { padding-bottom: .7rem; }
+  table.licitacoes td[data-rotulo]::before { content: attr(data-rotulo); display: block; font-size: .7rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--sutil); }
+  table.licitacoes td.equipe { min-width: 0; }
+  .edital { font-size: 1.3rem; }
+  .indicadores { grid-template-columns: repeat(2, 1fr); }
+  .cartao { padding: .9rem; }
+}

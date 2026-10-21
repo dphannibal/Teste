@@ -4,6 +4,7 @@
 <h1>{{ titulo }}</h1>
 <form method="post" class="cartao formulario" id="form-licitacao">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  {% if atual %}<input type="hidden" name="versao" value="{{ atual.versao }}">{% endif %}
   <div class="grade">
     <label>Nº do edital
       <span class="com-prefixo"><span id="sigla" class="prefixo" aria-hidden="true"></span><input name="numero_edital" value="{{ dados.numero_edital or '' }}" placeholder="Ex.: 007/2026"></span>

@@ -58,9 +58,9 @@
       {% set etapa = etapa_recurso(l) %}
       <tr class="linha-modalidade" style="{{ estilo_modalidade(l.modalidade) }}">
         <td class="nowrap">{{ edital_celula(l) }}</td>
-        <td>{% if etapa[2] %}<span class="selo selo-vermelho">Decisão vencida</span>{% else %}<strong>{{ etapa[0] }}</strong>{% if etapa[1] == hoje %} <span class="selo selo-laranja">vence hoje</span>{% endif %}{% endif %}</td>
-        {% for campo in ['razoes_ate', 'contrarrazoes_ate', 'reconsideracao_ate', 'decisao_ate'] %}
-          <td class="nowrap {% if l[campo] == etapa[1] %}etapa-atual{% endif %}">{{ l[campo]|data(false) }}</td>
+        <td data-rotulo="Etapa atual">{% if etapa[2] %}<span class="selo selo-vermelho">Decisão vencida</span>{% else %}<strong>{{ etapa[0] }}</strong>{% if etapa[1] == hoje %} <span class="selo selo-laranja">vence hoje</span>{% endif %}{% endif %}</td>
+        {% for campo, rotulo in [('razoes_ate', 'Razões até'), ('contrarrazoes_ate', 'Contrarrazões até'), ('reconsideracao_ate', 'Reconsideração até'), ('decisao_ate', 'Decisão até')] %}
+          <td class="nowrap {% if l[campo] == etapa[1] %}etapa-atual{% endif %}" data-rotulo="{{ rotulo }}">{{ l[campo]|data(false) }}</td>
         {% endfor %}
       </tr>
     {% endfor %}
@@ -89,9 +89,9 @@
     {% for l in credenciamentos %}
       <tr class="linha-modalidade" style="{{ estilo_modalidade(l.modalidade) }}">
         <td class="nowrap">{{ edital_celula(l) }}</td>
-        <td class="nowrap">{{ l.vigencia_ate|data(false) if l.vigencia_ate else '—' }}</td>
-        <td>{{ l.objeto|truncate(100) }}</td>
-        <td>
+        <td class="nowrap" data-rotulo="Vigência até">{{ l.vigencia_ate|data(false) if l.vigencia_ate else '—' }}</td>
+        <td data-rotulo="Objeto">{{ l.objeto|truncate(100) }}</td>
+        <td data-rotulo="Renovação">
           {% if not l.vigencia_ate or l.vigencia_ate < hoje %}<span class="selo selo-vermelho">Vencida — renovar</span>
           {% elif l.vigencia_ate <= alerta_renovacao %}<span class="selo selo-laranja">Renovar em breve</span>
           {% else %}<span class="selo selo-verde">Em dia</span>{% endif %}

@@ -33,14 +33,14 @@
 
 {% macro celula(coluna, l, agora) -%}
   {%- if coluna == 'edital' %}<td class="nowrap">{{ edital_celula(l) }}</td>
-  {%- elif coluna == 'data' %}<td class="nowrap">{{ quando(l, agora) }}</td>
-  {%- elif coluna == 'modalidade' %}<td>{{ l.modalidade }}</td>
-  {%- elif coluna == 'objeto' %}<td>{{ l.objeto|truncate(110) }}</td>
-  {%- elif coluna == 'equipe' %}<td class="equipe">{{ equipe_resumo(l) }}</td>
-  {%- elif coluna == 'situacao' %}<td>{{ situacao_selo(l) }}</td>
-  {%- elif coluna == 'local' %}<td>{{ l.local or '—' }}</td>
-  {%- elif coluna == 'valor' %}<td class="nowrap">{{ l.valor_estimado|moeda }}</td>
-  {%- elif coluna == 'publicacao' %}<td class="nowrap">{{ l.data_publicacao|data(false) if l.data_publicacao else '—' }}</td>
+  {%- elif coluna == 'data' %}<td data-rotulo="{{ COLUNAS[coluna] }}" class="nowrap">{{ quando(l, agora) }}</td>
+  {%- elif coluna == 'modalidade' %}<td data-rotulo="{{ COLUNAS[coluna] }}">{{ l.modalidade }}</td>
+  {%- elif coluna == 'objeto' %}<td data-rotulo="{{ COLUNAS[coluna] }}">{{ l.objeto|truncate(110) }}</td>
+  {%- elif coluna == 'equipe' %}<td data-rotulo="{{ COLUNAS[coluna] }}" class="equipe">{{ equipe_resumo(l) }}</td>
+  {%- elif coluna == 'situacao' %}<td data-rotulo="{{ COLUNAS[coluna] }}">{{ situacao_selo(l) }}</td>
+  {%- elif coluna == 'local' %}<td data-rotulo="{{ COLUNAS[coluna] }}">{{ l.local or '—' }}</td>
+  {%- elif coluna == 'valor' %}<td data-rotulo="{{ COLUNAS[coluna] }}" class="nowrap">{{ l.valor_estimado|moeda }}</td>
+  {%- elif coluna == 'publicacao' %}<td data-rotulo="{{ COLUNAS[coluna] }}" class="nowrap">{{ l.data_publicacao|data(false) if l.data_publicacao else '—' }}</td>
   {%- endif %}
 {%- endmacro %}
 

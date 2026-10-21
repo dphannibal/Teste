@@ -13,7 +13,8 @@
     {% if brasao_url %}<img class="brasao" src="{{ brasao_url }}" alt="Brasão">{% endif %}
     <span>Agenda de Licitações<small>{{ nome_orgao }}</small></span>
   </a>
-  <nav>
+  {% if not g.usuario.trocar_senha %}<button type="button" class="menu-botao" aria-expanded="false" aria-controls="menu">Menu</button>{% endif %}
+  <nav id="menu">
     {% if not g.usuario.trocar_senha %}
     <a href="{{ url_for('agenda.painel') }}">Painel</a>
     <a href="{{ url_for('agenda.calendario') }}">Calendário</a>
@@ -43,5 +44,16 @@
   {% block conteudo %}{% endblock %}
 </main>
 <script src="{{ url_for('static', filename='datas.js') }}"></script>
+<script>
+// Celular: o menu fica recolhido atrás do botão "Menu".
+(function () {
+  var botao = document.querySelector('.menu-botao');
+  if (!botao) return;
+  botao.addEventListener('click', function () {
+    var aberto = document.querySelector('.topo').classList.toggle('menu-aberto');
+    botao.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+  });
+})();
+</script>
 </body>
 </html>
