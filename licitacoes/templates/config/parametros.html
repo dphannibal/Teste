@@ -26,7 +26,7 @@
   <p class="sutil">A sigla acompanha o número do edital nas telas e na imagem (ex.: PE 007/2026). A cor é usada nas linhas do painel.</p>
   <div class="tabela-rolagem">
   <table class="licitacoes">
-    <thead><tr><th>Ordem</th><th>Modalidade</th><th>Sigla</th><th>Tipo</th><th>Quem conduz</th><th>Em uso</th><th></th></tr></thead>
+    <thead><tr><th>Ordem</th><th>Modalidade</th><th>Sigla</th><th>Tipo</th><th>Objetos / critérios (prazo)</th><th>Quem conduz</th><th>Em uso</th><th></th></tr></thead>
     <tbody>
     {% for m in modalidades %}
       {% set cor = cor_modalidade(m.nome) %}
@@ -35,6 +35,7 @@
         <td><strong>{{ m.nome }}</strong>{% if not m.ativa %} <small>(inativa)</small>{% endif %}</td>
         <td><span class="edital">{{ m.sigla }}</span></td>
         <td>{{ 'Credenciamento (vigência anual)' if m.credenciamento else 'Com sessão pública' }}{% if not m.exige_equipe %}<br><small>equipe opcional</small>{% endif %}</td>
+        <td><small>{% for k in m.prazos_permitidos.split(',') if k in prazos %}{{ prazos[k][0].split(' (')[0] }} ({{ prazos[k][1] }} d.u.){% if not loop.last %}<br>{% endif %}{% endfor %}</small></td>
         <td>{{ m.rotulo_condutor }}</td>
         <td>{{ uso_modalidade.get(m.nome, 0) }}</td>
         <td class="acoes">
@@ -50,6 +51,22 @@
     </tbody>
   </table>
   </div>
+</section>
+
+<section class="cartao" id="whatsapp">
+  <h2>Exportação para o WhatsApp</h2>
+  <p class="sutil">Marque as situações cujas licitações entram na imagem (e no texto) enviada pelo WhatsApp.</p>
+  <form method="post" action="{{ url_for('config.filtro_whatsapp') }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <div class="opcoes-em-linha">
+      {% for s in situacoes if s.ativa %}
+        {% set cor = cores_situacao(s.chave) %}
+        <label class="opcao"><input type="checkbox" name="whatsapp" value="{{ s.chave }}" {% if s.whatsapp %}checked{% endif %}>
+          <span class="selo" style="background: {{ cor[0] }}; color: {{ cor[1] }};">{{ s.nome }}</span></label>
+      {% endfor %}
+    </div>
+    <div class="acoes"><button class="primario">Salvar filtro</button></div>
+  </form>
 </section>
 
 <section class="cartao">

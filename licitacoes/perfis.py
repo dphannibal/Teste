@@ -17,6 +17,7 @@ PERMISSOES = {
     "criar": "Cadastrar licitações",
     "editar": "Editar licitações e renovar credenciamentos",
     "suspender": "Suspender e remarcar sessões",
+    "recursos": "Registrar recursos e suas decisões",
     "excluir": "Excluir licitações",
     "servidores": "Cadastrar servidores",
     "afastamentos": "Registrar férias e afastamentos",
@@ -31,54 +32,75 @@ PERMISSOES = {
 PERFIL_TOTAL = "administrador"
 
 PERMISSOES_PADRAO = {
-    "gestor": {"ver", "criar", "editar", "suspender", "excluir", "servidores", "afastamentos",
+    "gestor": {"ver", "criar", "editar", "suspender", "recursos", "excluir", "servidores",
+               "afastamentos",
                "feriados", "auditoria", "parametros"},
-    "pregoeiro": {"ver", "criar", "editar", "suspender"},
+    "pregoeiro": {"ver", "criar", "editar", "suspender", "recursos"},
     "consulta": {"ver"},
 }
 
-# Prazo mínimo entre a divulgação do edital e a sessão, em dias úteis (art. 55 da
-# Lei 14.133/2021; dispensa: art. 75, § 3º; diálogo competitivo: art. 32, § 1º, I).
+# Objeto e critério de julgamento -> (descrição, prazo mínimo em dias úteis entre a
+# divulgação e a sessão, se a contagem inclui o próprio dia da divulgação).
+# Art. 55 da Lei 14.133/2021; dispensa: art. 75, § 3º; diálogo competitivo: art. 32, § 1º, I.
 PRAZOS = {
-    "bens_menor_preco": ("Bens — menor preço ou maior desconto (art. 55, I, a)", 8),
-    "bens_demais": ("Bens — demais critérios (art. 55, I, b)", 15),
+    "bens_menor_preco": ("Bens — menor preço ou maior desconto (art. 55, I, a)", 8, False),
+    "bens_demais": ("Bens — demais critérios (art. 55, I, b)", 15, False),
     "servicos_comuns": ("Serviços comuns, obras e serviços comuns de engenharia — menor preço "
-                        "ou maior desconto (art. 55, II, a)", 10),
+                        "ou maior desconto (art. 55, II, a)", 10, False),
     "servicos_especiais": ("Serviços especiais, obras e serviços especiais de engenharia — "
-                           "menor preço ou maior desconto (art. 55, II, b)", 25),
-    "integrada": ("Obras e serviços — contratação integrada (art. 55, II, c)", 60),
+                           "menor preço ou maior desconto (art. 55, II, b)", 25, False),
+    "integrada": ("Obras e serviços — contratação integrada (art. 55, II, c)", 60, False),
     "semi_integrada": ("Obras e serviços — contratação semi-integrada ou demais hipóteses "
-                       "(art. 55, II, d)", 35),
-    "maior_lance": ("Maior lance — leilão (art. 55, III)", 15),
-    "tecnica": ("Técnica e preço, melhor técnica ou conteúdo artístico (art. 55, IV)", 35),
-    "dispensa": ("Dispensa eletrônica — divulgação do aviso (art. 75, § 3º)", 3),
-    "dialogo": ("Diálogo competitivo — manifestação de interesse (art. 32, § 1º, I)", 25),
-    "nao_se_aplica": ("Não se aplica (sem prazo mínimo)", 0),
+                       "(art. 55, II, d)", 35, False),
+    "maior_lance": ("Maior lance (art. 55, III)", 15, False),
+    "tecnica": ("Técnica e preço, melhor técnica ou conteúdo artístico (art. 55, IV)", 35,
+                False),
+    # A dispensa eletrônica conta o próprio dia em que o aviso é publicado.
+    "dispensa": ("Aviso de dispensa eletrônica (art. 75, § 3º) — conta o dia da publicação",
+                 3, True),
+    "dialogo": ("Manifestação de interesse no diálogo competitivo (art. 32, § 1º, I)", 25,
+                False),
+    "nao_se_aplica": ("Sem prazo mínimo", 0, False),
 }
 
-# (nome, sigla, cor, aberta com vigência anual, exige equipe, quem conduz, prazo padrão)
+PREGAO = "bens_menor_preco,servicos_comuns"
+CONCORRENCIA = ("bens_menor_preco,bens_demais,servicos_comuns,servicos_especiais,integrada,"
+                "semi_integrada,tecnica")
+
+# (nome, sigla, cor, aberta com vigência anual, exige equipe, quem conduz, objeto/critério
+#  padrão, objetos/critérios cabíveis na modalidade)
 MODALIDADES_PADRAO = [
-    ("Pregão Eletrônico", "PE", "#1e7b3c", 0, 1, "Pregoeiro(a)", "bens_menor_preco"),
-    ("Pregão Presencial", "PP", "#b42318", 0, 1, "Pregoeiro(a)", "bens_menor_preco"),
+    ("Pregão Eletrônico", "PE", "#1e7b3c", 0, 1, "Pregoeiro(a)", "bens_menor_preco", PREGAO),
+    ("Pregão Presencial", "PP", "#b42318", 0, 1, "Pregoeiro(a)", "bens_menor_preco", PREGAO),
     ("Concorrência Eletrônica", "CE", "#1d4f91", 0, 1, "Agente de contratação",
-     "servicos_comuns"),
+     "servicos_comuns", CONCORRENCIA),
     ("Concorrência Presencial", "CP", "#b35a00", 0, 1, "Agente de contratação",
-     "servicos_comuns"),
-    ("Concurso", "CS", "#6a3fb5", 0, 1, "Agente de contratação", "tecnica"),
-    ("Leilão", "LE", "#8a6d00", 0, 1, "Agente de contratação", "maior_lance"),
-    ("Diálogo Competitivo", "DC", "#0f7676", 0, 1, "Agente de contratação", "dialogo"),
-    ("Dispensa Eletrônica", "DE", "#7a5230", 0, 1, "Agente de contratação", "dispensa"),
-    ("Inexigibilidade", "IN", "#4b5563", 0, 0, "Agente de contratação", "nao_se_aplica"),
-    ("Credenciamento", "CR", "#a3266b", 1, 1, "Agente de contratação", "nao_se_aplica"),
+     "servicos_comuns", CONCORRENCIA),
+    ("Concurso", "CS", "#6a3fb5", 0, 1, "Agente de contratação", "tecnica", "tecnica"),
+    ("Leilão", "LE", "#8a6d00", 0, 1, "Agente de contratação", "maior_lance", "maior_lance"),
+    ("Diálogo Competitivo", "DC", "#0f7676", 0, 1, "Agente de contratação", "dialogo",
+     "dialogo"),
+    ("Dispensa Eletrônica", "DE", "#7a5230", 0, 1, "Agente de contratação", "dispensa",
+     "dispensa"),
+    ("Inexigibilidade", "IN", "#4b5563", 0, 0, "Agente de contratação", "nao_se_aplica",
+     "nao_se_aplica"),
+    ("Credenciamento", "CR", "#a3266b", 1, 1, "Agente de contratação", "nao_se_aplica",
+     "nao_se_aplica"),
 ]
+
+# Prazos recursais (art. 165 da Lei 14.133/2021), em dias úteis.
+PRAZO_RAZOES = 3            # razões, contados da intimação ou da lavratura da ata (I)
+PRAZO_CONTRARRAZOES = 3     # contrarrazões, contadas do fim do prazo das razões (§ 4º)
+PRAZO_RECONSIDERACAO = 3    # reconsideração pela autoridade que praticou o ato (§ 2º)
+PRAZO_DECISAO = 10          # decisão da autoridade superior (§ 2º)
 
 # (nome, tipo, abrangência, regra, dia, mês, deslocamento da Páscoa, observação)
 FERIADOS_PADRAO = [
     ("Confraternização Universal", "feriado", "nacional", "fixa", 1, 1, None, "Lei 662/1949"),
     ("Carnaval (segunda-feira)", "ponto_facultativo", "nacional", "pascoa", None, None, -48,
      "Ponto facultativo federal"),
-    ("Carnaval (terça-feira)", "ponto_facultativo", "nacional", "pascoa", None, None, -47,
-     "Ponto facultativo federal; confira se há lei ou decreto estadual/municipal"),
+    ("Carnaval (terça-feira)", "feriado", "nacional", "pascoa", None, None, -47,
+     "Considerado feriado na secretaria"),
     ("Quarta-feira de Cinzas", "ponto_facultativo", "nacional", "pascoa", None, None, -46,
      "Ponto facultativo até as 14h"),
     ("Paixão de Cristo (Sexta-feira Santa)", "feriado", "nacional", "pascoa", None, None, -2,
@@ -90,8 +112,8 @@ FERIADOS_PADRAO = [
      "Ponto facultativo federal"),
     ("Independência do Brasil", "feriado", "nacional", "fixa", 7, 9, None, "Lei 662/1949"),
     ("Nossa Senhora Aparecida", "feriado", "nacional", "fixa", 12, 10, None, "Lei 6.802/1980"),
-    ("Dia do Servidor Público", "ponto_facultativo", "nacional", "fixa", 28, 10, None,
-     "Costuma ser transferido por decreto; confira a cada ano"),
+    ("Dia do Servidor Público", "feriado", "nacional", "fixa", 28, 10, None,
+     "Considerado feriado na secretaria; costuma ser transferido por decreto"),
     ("Finados", "feriado", "nacional", "fixa", 2, 11, None, "Lei 662/1949"),
     ("Proclamação da República", "feriado", "nacional", "fixa", 15, 11, None, "Lei 662/1949"),
     ("Dia Nacional de Zumbi e da Consciência Negra", "feriado", "nacional", "fixa", 20, 11,
@@ -99,8 +121,9 @@ FERIADOS_PADRAO = [
     ("Natal", "feriado", "nacional", "fixa", 25, 12, None, "Lei 662/1949"),
     ("São Sebastião, padroeiro de Três Rios", "feriado", "municipal", "fixa", 20, 1, None,
      "Feriado municipal de Três Rios"),
-    ("Emancipação de Três Rios", "feriado", "municipal", "fixa", 26, 12, None,
-     "Feriado municipal de Três Rios"),
+    ("Emancipação de Três Rios", "feriado", "municipal", "fixa", 14, 12, None,
+     "Feriado municipal de Três Rios; normalmente transferido — registre a transferência "
+     "a cada ano"),
 ]
 
 # Fase -> descrição. O comportamento do sistema depende da fase, não do nome da situação.
@@ -122,6 +145,7 @@ SITUACOES_PADRAO = [
     ("publicado", "Edital publicado", "#1d4f91", "publicada", 1),
     ("remarcada", "Remarcada", "#5b2ca0", "remarcada", 1),
     ("andamento", "Em andamento", "#7a5a00", "andamento", 1),
+    ("recurso", "Em recurso", "#c2410c", "andamento", 1),
     ("suspensa", "Suspensa", "#9a3d00", "suspensa", 1),
     ("homologada", "Homologada", "#146c2e", "concluida", 0),
     ("concluida", "Concluída", "#146c2e", "concluida", 1),

@@ -74,8 +74,9 @@ dos perfis** (o Administrador sempre tem tudo). Padrão inicial:
 
 - Já vêm cadastrados os feriados **nacionais**, o **estadual do RJ** (São Jorge, 23/04 — Lei
   estadual 5.198/2008) e os **municipais de Três Rios** (São Sebastião, 20/01, e Emancipação,
-  26/12), além dos pontos facultativos usuais (Carnaval, Quarta de Cinzas, Corpus Christi,
-  Dia do Servidor). Confira a lista com a legislação local e ajuste em **Configurações →
+  14/12, normalmente transferida por decreto — registre a transferência a cada ano). Terça de
+  Carnaval e Dia do Servidor estão como feriado; Carnaval (segunda), Quarta de Cinzas e
+  Corpus Christi, como pontos facultativos. Confira a lista com a legislação local e ajuste em **Configurações →
   Feriados e pontos facultativos**.
 - É possível cadastrar feriados ou pontos facultativos (fixos, móveis pela Páscoa ou numa data
   específica) e **transferir a data** de um feriado num ano (ex.: decreto municipal que
@@ -84,14 +85,24 @@ dos perfis** (o Administrador sempre tem tudo). Padrão inicial:
 - A data da sessão (no cadastro, na edição e nas remarcações) **não pode cair em sábado,
   domingo ou feriado**; em ponto facultativo, só com a confirmação de que haverá expediente.
 - **Prazo mínimo legal** (art. 55 da Lei 14.133/2021; dispensa: art. 75, § 3º; diálogo
-  competitivo: art. 32, § 1º, I): cada licitação tem o enquadramento do prazo (sugerido pela
-  modalidade). A contagem começa no dia útil seguinte à divulgação do edital (art. 183,
-  § 1º, I), considera apenas dias úteis (sem fins de semana, feriados e pontos facultativos)
-  e garante os dias completos — a sessão pode ocorrer no dia útil seguinte ao último dia do
-  prazo. O formulário mostra a data mínima enquanto se preenche.
+  competitivo: art. 32, § 1º, I): cada licitação informa o **objeto / critério de
+  julgamento**, e as opções dependem da modalidade (ex.: pregão para bens — 8 dias úteis — ou
+  serviços comuns — 10; concorrência com técnica e preço — 35). As opções de cada modalidade
+  são configuráveis. A contagem começa no dia útil seguinte à divulgação (art. 183, § 1º, I)
+  e a sessão pode ser marcada para o último dia do prazo. **Exceção: o aviso de dispensa
+  eletrônica conta o próprio dia da publicação.** Só contam dias úteis (sem fins de semana,
+  feriados e pontos facultativos). O formulário mostra a data mínima enquanto se preenche.
 - **Remarcação após retificação do edital**: o prazo é contado de novo a partir da divulgação
   do edital retificado (art. 55, § 1º), salvo quando se marca que a alteração não compromete
   a formulação das propostas.
+
+## Recursos
+
+Com a sessão em andamento, “Registrar recurso” informa a data da intimação ou da lavratura da
+ata e calcula, em dias úteis (art. 165): razões (3), contrarrazões (3, após as razões),
+reconsideração (3) e decisão da autoridade superior (até 10, data estimada). A licitação fica
+“Em recurso”, e o painel mostra o quadro **Em recurso — prazos** com a etapa atual. A
+situação só muda ao registrar a decisão (provido, não provido…).
 
 ## Parâmetros (Configurações)
 
@@ -101,6 +112,7 @@ Quem tem a permissão de parâmetros (Administrador e Gestor, por padrão) alter
 - **Modalidades**: nome, **sigla**, cor, ordem, se exige equipe, quem conduz (pregoeiro ou
   agente) e se funciona como credenciamento. O número do edital é digitado **sem a sigla**
   (ex.: `007/2026`) e aparece nas telas como `PE 007/2026`.
+- **Exportação para o WhatsApp**: quais situações entram na imagem e no texto.
 - **Situações da licitação**: nome, cor, ordem e fase. O comportamento segue a fase
   (planejamento, publicada, remarcada, suspensa, em andamento, concluída, encerrada). As
   situações do sistema podem ser renomeadas e recoloridas, mas não excluídas.

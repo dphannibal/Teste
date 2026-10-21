@@ -206,3 +206,6 @@ td.acoes > * { display: inline-block; margin-right: .6rem; vertical-align: middl
 .nome-feriado { font-size: .7rem; color: var(--perigo); line-height: 1.2; margin-bottom: .2rem; }
 .facultativo .nome-feriado { color: var(--laranja-t); }
 .chip-dia { padding: .1rem .5rem; border-radius: 4px; font-size: .78rem; border: 1px solid var(--borda); }
+.opcoes-em-linha { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin: .5rem 0 1rem; }
+.opcoes-em-linha label.opcao { margin: 0; }
+td.etapa-atual { font-weight: 700; text-decoration: underline; }

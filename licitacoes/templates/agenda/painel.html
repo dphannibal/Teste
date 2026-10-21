@@ -37,6 +37,31 @@
   {{ tabela(em_andamento, 'Nenhuma licitação em andamento.', agora) }}
 </section>
 
+{% if em_recurso %}
+<section class="cartao alerta">
+  <h2>Em recurso — prazos</h2>
+  <p class="sutil">Prazos em dias úteis (art. 165 da Lei 14.133): razões, contrarrazões, reconsideração e decisão da autoridade superior (estimada).</p>
+  <div class="tabela-rolagem">
+  <table class="licitacoes">
+    <thead><tr><th>Edital</th><th>Etapa atual</th><th>Razões até</th><th>Contrarrazões até</th><th>Reconsideração até</th><th>Decisão até</th><th>Recorrente(s)</th></tr></thead>
+    <tbody>
+    {% for l in em_recurso %}
+      {% set etapa = etapa_recurso(l) %}
+      <tr class="linha-modalidade" style="{{ estilo_modalidade(l.modalidade) }}">
+        <td class="nowrap">{{ edital_celula(l) }}</td>
+        <td>{% if etapa[2] %}<span class="selo selo-vermelho">Decisão vencida</span>{% else %}<strong>{{ etapa[0] }}</strong>{% if etapa[1] == hoje %} <span class="selo selo-laranja">vence hoje</span>{% endif %}{% endif %}</td>
+        {% for campo in ['razoes_ate', 'contrarrazoes_ate', 'reconsideracao_ate', 'decisao_ate'] %}
+          <td class="nowrap {% if l[campo] == etapa[1] %}etapa-atual{% endif %}">{{ l[campo]|data(false) }}</td>
+        {% endfor %}
+        <td>{{ l.recorrentes or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
 {% if suspensas %}
 <section class="cartao alerta">
   <h2>Suspensas antes da abertura da sessão</h2>

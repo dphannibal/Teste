@@ -132,15 +132,25 @@ def proximo_dia_util(dia):
     return dia
 
 
-def data_minima_sessao(divulgacao, dias_uteis):
-    """Primeira data possível para a sessão, garantindo ``dias_uteis`` dias úteis completos
-    para as propostas: a contagem começa no dia útil seguinte ao da divulgação (art. 183,
-    § 1º, I) e a sessão só pode ocorrer no dia útil seguinte ao último dia do prazo."""
-    if not dias_uteis:
-        return None
-    dia, contados = divulgacao, 0
+def contar_dias_uteis(inicio, dias_uteis, conta_o_inicio=False):
+    """Último dia de um prazo de ``dias_uteis`` dias úteis.
+
+    Regra geral (art. 183): exclui-se o dia do começo e conta-se a partir do dia útil
+    seguinte. Com ``conta_o_inicio`` (aviso de dispensa eletrônica), o próprio dia entra na
+    contagem se for útil."""
+    dia, contados = inicio, 0
+    if conta_o_inicio and eh_dia_util(dia):
+        contados = 1
     while contados < dias_uteis:
         dia += timedelta(days=1)
         if eh_dia_util(dia):
             contados += 1
-    return proximo_dia_util(dia + timedelta(days=1))
+    return dia
+
+
+def data_minima_sessao(divulgacao, dias_uteis, conta_divulgacao=False):
+    """Primeira data possível para a sessão: o último dia do prazo mínimo (a sessão pode
+    ser marcada para o mesmo dia em que o prazo termina)."""
+    if not dias_uteis:
+        return None
+    return contar_dias_uteis(divulgacao, dias_uteis, conta_divulgacao)

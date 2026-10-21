@@ -12,7 +12,7 @@
     <label>Modalidade *
       <select name="modalidade" id="modalidade" required>
         <option value="">Selecione…</option>
-        {% for m in modalidades %}<option value="{{ m.nome }}" data-sigla="{{ m.sigla }}" data-prazo="{{ m.prazo_padrao }}" data-credenciamento="{{ m.credenciamento }}" {% if dados.modalidade == m.nome %}selected{% endif %}>{{ m.nome }} ({{ m.sigla }})</option>{% endfor %}
+        {% for m in modalidades %}<option value="{{ m.nome }}" data-sigla="{{ m.sigla }}" data-prazo="{{ m.prazo_padrao }}" data-prazos="{{ prazos_da_modalidade(m)|join(',') }}" data-credenciamento="{{ m.credenciamento }}" {% if dados.modalidade == m.nome %}selected{% endif %}>{{ m.nome }} ({{ m.sigla }})</option>{% endfor %}
       </select>
     </label>
     <label>Situação *
@@ -26,11 +26,11 @@
     <label class="so-sessao">Data e hora da sessão<input type="datetime-local" name="data_sessao" id="data_sessao" value="{{ dados.data_sessao or '' }}">
       <small id="aviso-data" class="atraso" hidden></small>
       <small id="data-minima"></small></label>
-    <label class="so-sessao">Prazo mínimo legal
+    <label>Objeto / critério de julgamento
       <select name="prazo_hipotese" id="prazo">
-        <option value="">Padrão da modalidade</option>
-        {% for k, p in prazos.items() %}<option value="{{ k }}" data-dias="{{ p[1] }}" {% if dados.prazo_hipotese == k %}selected{% endif %}>{{ p[0] }} — {{ p[1] }} dias úteis</option>{% endfor %}
-      </select></label>
+        {% for k, p in prazos.items() %}<option value="{{ k }}" data-dias="{{ p[1] }}" data-conta="{{ 1 if p[2] else 0 }}" {% if dados.prazo_hipotese == k %}selected{% endif %}>{{ p[0] }} — {{ p[1] }} dias úteis</option>{% endfor %}
+      </select>
+      <small>Define o prazo mínimo legal entre a divulgação e a sessão.</small></label>
     <label class="so-credenciamento">Vigência até
       <input type="date" name="vigencia_ate" value="{{ dados.vigencia_ate or '' }}">
       <small>Em branco: 1 ano após a publicação. Renove a cada ano pela tela da licitação.</small>
@@ -90,24 +90,33 @@
   function iso(d) { return d.toISOString().slice(0, 10); }
   function maisUm(d) { var n = new Date(d); n.setUTCDate(n.getUTCDate() + 1); return n; }
   function util(d) { return !(iso(d) in NAO_UTEIS); }
-  // Mesma regra do servidor: N dias úteis completos a partir do dia útil seguinte à
-  // divulgação; a sessão pode ocorrer no dia útil seguinte ao último dia do prazo.
-  function dataMinima(divulgacao, dias) {
-    var d = new Date(divulgacao + 'T00:00:00Z'), contados = 0;
+  // Mesma regra do servidor: a contagem começa no dia útil seguinte à divulgação (no aviso
+  // de dispensa, no próprio dia) e a sessão pode ser no último dia do prazo.
+  function dataMinima(divulgacao, dias, contaDivulgacao) {
+    var d = new Date(divulgacao + 'T00:00:00Z'), contados = contaDivulgacao && util(d) ? 1 : 0;
     while (contados < dias) { d = maisUm(d); if (util(d)) contados++; }
-    d = maisUm(d);
-    while (!util(d)) d = maisUm(d);
     return d;
+  }
+  // Só os objetos/critérios cabíveis na modalidade escolhida.
+  function filtrarPrazos() {
+    var opcao = modalidade.selectedOptions[0];
+    var cabiveis = opcao && opcao.dataset.prazos ? opcao.dataset.prazos.split(',') : [];
+    Array.prototype.forEach.call(prazo.options, function (o) {
+      o.hidden = o.disabled = cabiveis.length > 0 && cabiveis.indexOf(o.value) < 0;
+    });
+    if (!prazo.value || (prazo.selectedOptions[0] && prazo.selectedOptions[0].disabled)) {
+      prazo.value = opcao && opcao.dataset.prazo ? opcao.dataset.prazo : cabiveis[0] || '';
+    }
+    prazo.closest('label').hidden = cabiveis.length === 1 && cabiveis[0] === 'nao_se_aplica';
   }
   function conferirData() {
     var opcao = modalidade.selectedOptions[0], cred = !!opcao && opcao.dataset.credenciamento === '1';
-    var escolhido = prazo.value || (opcao ? opcao.dataset.prazo : '');
-    var item = Array.prototype.find.call(prazo.options, function (o) { return o.value === escolhido; });
-    var dias = item ? parseInt(item.dataset.dias || '0', 10) : 0;
+    var item = prazo.selectedOptions[0];
+    var dias = item ? parseInt(item.dataset.dias || '0', 10) : 0, conta = item && item.dataset.conta === '1';
     var divulgacao = DIVULGACAO_RETIFICADA || publicacao.value, minima = document.getElementById('data-minima');
     minima.textContent = '';
     if (!cred && dias && divulgacao) {
-      var m = dataMinima(divulgacao, dias);
+      var m = dataMinima(divulgacao, dias, conta);
       minima.textContent = 'Prazo de ' + dias + ' dias úteis: sessão a partir de ' + br(iso(m)) + '.';
     }
     var aviso = document.getElementById('aviso-data'), dia = sessao.value.slice(0, 10);
@@ -155,6 +164,7 @@
     alerta.textContent = 'Impedido na data da sessão: ' + avisos.join('; ') + '.';
   }
   modalidade.addEventListener('change', ajustarModalidade);
+  modalidade.addEventListener('change', filtrarPrazos);
   modalidade.addEventListener('change', conferirData);
   [sessao, prazo, publicacao].forEach(function (e) { e.addEventListener('change', conferirData); });
   sessao.addEventListener('change', conferirAfastamentos);
@@ -162,7 +172,7 @@
     s.addEventListener('change', conferirEquipe);
     s.addEventListener('change', conferirAfastamentos);
   });
-  ajustarModalidade(); conferirEquipe(); conferirData();
+  filtrarPrazos(); ajustarModalidade(); conferirEquipe(); conferirData();
 })();
 </script>
 {% endblock %}

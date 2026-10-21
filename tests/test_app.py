@@ -517,7 +517,8 @@ def test_gestor_altera_parametros(client):
     post(client, "/admin/modalidades/1/editar",
          {"nome": "Pregão Eletrônico SRP", "sigla": "pes", "cor": "#123456", "ordem": "0",
           "ativa": "1", "exige_equipe": "1", "rotulo_condutor": "Pregoeiro(a)",
-          "prazo_padrao": "bens_menor_preco"},
+          "prazo_padrao": "bens_menor_preco",
+          "prazos_permitidos": ["bens_menor_preco", "servicos_comuns"]},
          "/admin/modalidades/1/editar")
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
     assert "PES 010/2026" in pagina and "Pregão Eletrônico SRP" in pagina
@@ -642,26 +643,104 @@ def test_ponto_facultativo_cadastrado_avisa_sessoes_marcadas(client):
 
 def test_prazo_minimo_legal_de_nova_licitacao(client):
     entrar(client, "pregoeiro")
-    # Pregão de bens por menor preço: 8 dias úteis. Divulgado na segunda 01/03/2027,
-    # o prazo corre de 02/03 a 11/03; a sessão pode ser a partir de 12/03.
+    # Pregão de bens por menor preço: 8 dias úteis. Divulgado na segunda 01/03/2027, o prazo
+    # corre de 02/03 a 11/03, e a sessão pode ser marcada para o próprio dia 11/03.
     base = dict(LICITACAO, data_publicacao="2027-03-01")
-    html = post(client, "/licitacoes/nova", dict(base, data_sessao="2027-03-11T09:00"),
+    html = post(client, "/licitacoes/nova", dict(base, data_sessao="2027-03-10T09:00"),
                 "/licitacoes/nova").get_data(as_text=True)
-    assert "Prazo mínimo legal não respeitado" in html and "a partir de 12/03/2027" in html
-    resp = post(client, "/licitacoes/nova", dict(base, data_sessao="2027-03-12T09:00"),
+    assert "Prazo mínimo legal não respeitado" in html and "a partir de 11/03/2027" in html
+    resp = post(client, "/licitacoes/nova", dict(base, data_sessao="2027-03-11T09:00"),
                 "/licitacoes/nova")
     assert resp.status_code == 302
     pagina = client.get(resp.headers["Location"]).get_data(as_text=True)
-    assert "8 dias úteis" in pagina and "a partir de 12/03/2027" in pagina
+    assert "8 dias úteis" in pagina and "a partir de 11/03/2027" in pagina
 
-    # Serviços especiais: 25 dias úteis.
+    # Pregão de serviços comuns: 10 dias úteis (até 15/03).
     html = post(client, "/licitacoes/nova",
-                dict(base, data_sessao="2027-03-12T09:00", prazo_hipotese="servicos_especiais"),
+                dict(base, data_sessao="2027-03-12T09:00", prazo_hipotese="servicos_comuns"),
                 "/licitacoes/nova").get_data(as_text=True)
-    assert "exige 25 dias úteis" in html
+    assert "exige 10 dias úteis" in html and "a partir de 15/03/2027" in html
     html = post(client, "/licitacoes/nova", dict(base, data_publicacao=""),
                 "/licitacoes/nova").get_data(as_text=True)
     assert "Informe a data de publicação do edital" in html
+
+
+def test_objeto_e_criterio_conforme_a_modalidade(client):
+    entrar(client, "pregoeiro")
+    base = dict(LICITACAO, data_publicacao="2027-03-01", data_sessao="2027-04-30T09:00")
+    # Técnica e preço não cabe em pregão, mas cabe em concorrência (35 dias úteis).
+    html = post(client, "/licitacoes/nova", dict(base, prazo_hipotese="tecnica"),
+                "/licitacoes/nova").get_data(as_text=True)
+    assert "não cabe na modalidade Pregão Eletrônico" in html
+    concorrencia = dict(base, modalidade="Concorrência Eletrônica", prazo_hipotese="tecnica")
+    html = post(client, "/licitacoes/nova", dict(concorrencia, data_sessao="2027-04-16T09:00"),
+                "/licitacoes/nova").get_data(as_text=True)
+    assert "exige 35 dias úteis" in html
+    assert post(client, "/licitacoes/nova", concorrencia, "/licitacoes/nova").status_code == 302
+
+
+def test_dispensa_conta_o_dia_do_aviso(client):
+    entrar(client, "pregoeiro")
+    # Aviso publicado na segunda 01/03/2027: conta 01, 02 e 03/03 — sessão a partir de 03/03.
+    base = dict(LICITACAO, modalidade="Dispensa Eletrônica", data_publicacao="2027-03-01",
+                prazo_hipotese="")
+    html = post(client, "/licitacoes/nova", dict(base, data_sessao="2027-03-02T09:00"),
+                "/licitacoes/nova").get_data(as_text=True)
+    assert "a partir de 03/03/2027" in html
+    assert post(client, "/licitacoes/nova", dict(base, data_sessao="2027-03-03T09:00"),
+                "/licitacoes/nova").status_code == 302
+
+
+def test_recurso_e_prazos_no_painel(client):
+    entrar(client, "pregoeiro")
+    id_ = criar_licitacao(client)
+    # Só cabe recurso com a sessão aberta.
+    assert client.get(f"/licitacoes/{id_}/recurso").status_code == 400
+    abrir_sessao(client, id_)
+
+    # Ata lavrada na sexta 19/11/2027: razões 22–24/11, contrarrazões 25–29/11,
+    # reconsideração 30/11–02/12 e decisão em até 10 dias úteis — 17/12, porque 14/12 é o
+    # feriado da emancipação de Três Rios.
+    url = f"/licitacoes/{id_}/recurso"
+    post(client, url, {"intimado_em": "2027-11-19", "recorrentes": "Empresa X"}, url)
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    for data in ("24/11/2027", "29/11/2027", "02/12/2027", "17/12/2027"):
+        assert data in pagina
+    painel = client.get("/").get_data(as_text=True)
+    assert "Em recurso — prazos" in painel and "Empresa X" in painel and "24/11/2027" in painel
+
+    # Enquanto o recurso corre, a situação só muda pela decisão.
+    html = post(client, f"/licitacoes/{id_}/editar", dict(LICITACAO, status="homologada"),
+                f"/licitacoes/{id_}/editar").get_data(as_text=True)
+    assert "registre a decisão do recurso" in html
+    decisao = f"/licitacoes/{id_}/recurso/decisao"
+    post(client, decisao, {"decidido_em": "2027-12-10", "resultado": "Não provido",
+                           "status": "homologada"}, decisao)
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "Não provido em 10/12/2027" in pagina and "Homologada" in pagina
+    assert "Em recurso — prazos" not in client.get("/").get_data(as_text=True)
+
+
+def test_filtro_de_situacoes_no_whatsapp(client):
+    entrar(client, "gestor")
+    criar_licitacao(client)
+    assert "PE 010/2026" in client.get("/licitacoes/whatsapp").get_data(as_text=True)
+    marcadas = ["andamento", "recurso"]  # sem "Edital publicado"
+    post(client, "/admin/situacoes/whatsapp", {"whatsapp": marcadas}, "/admin/parametros")
+    assert "PE 010/2026" not in client.get("/licitacoes/whatsapp").get_data(as_text=True)
+    post(client, "/admin/situacoes/whatsapp", {"whatsapp": marcadas + ["publicado"]},
+         "/admin/parametros")
+    assert "PE 010/2026" in client.get("/licitacoes/whatsapp").get_data(as_text=True)
+
+
+def test_feriados_ajustados(client):
+    entrar(client, "pregoeiro")
+    for data_sessao, esperado in (("2027-12-14T09:00", "Emancipação de Três Rios"),
+                                  ("2027-02-09T09:00", "Carnaval (terça-feira)"),
+                                  ("2027-10-28T09:00", "Dia do Servidor")):
+        html = post(client, "/licitacoes/nova", dict(LICITACAO, data_sessao=data_sessao),
+                    "/licitacoes/nova").get_data(as_text=True)
+        assert esperado in html and 'name="confirmar_ponto_facultativo"' not in html
 
 
 def test_remarcacao_por_retificacao_reabre_o_prazo(client):
@@ -669,9 +748,9 @@ def test_remarcacao_por_retificacao_reabre_o_prazo(client):
     id_ = criar_licitacao(client)
     url = f"/licitacoes/{id_}/suspender"
     base = {"tipo": "remarcada_retificacao", "data_retificacao": "2030-04-01"}
-    # Retificado em 01/04/2030 (segunda): 8 dias úteis vão até 11/04; sessão a partir de 12/04.
+    # Retificado em 01/04/2030 (segunda): 8 dias úteis vão até 11/04, data mínima da sessão.
     html = post(client, url, dict(base, nova_data="2030-04-10T10:00"), url).get_data(as_text=True)
-    assert "a partir de 12/04/2030" in html
+    assert "a partir de 11/04/2030" in html
     html = post(client, url, {"tipo": "remarcada_retificacao", "nova_data": "2030-04-10T10:00"},
                 url).get_data(as_text=True)
     assert "divulgação do edital retificado" in html
@@ -684,9 +763,9 @@ def test_remarcacao_por_retificacao_reabre_o_prazo(client):
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
     assert "10/04/2030 10:00" in pagina and "Sem reabertura de prazo" in pagina
 
-    post(client, url, dict(base, nova_data="2030-04-12T10:00"), url)
+    post(client, url, dict(base, nova_data="2030-04-11T10:00"), url)
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
-    assert "12/04/2030 10:00" in pagina and "contado da retificação em 01/04/2030" in pagina
+    assert "11/04/2030 10:00" in pagina and "contado da retificação em 01/04/2030" in pagina
 
 
 def test_imagem_encaixa_mais_licitacoes(client):
@@ -725,3 +804,39 @@ def test_banco_antigo_e_convertido(tmp_path):
     assert conn.execute("SELECT numero_edital, status FROM licitacoes").fetchone() == (
         "012/2026", "andamento")
     assert conn.execute("SELECT perfil FROM usuarios").fetchone()[0] == "pregoeiro"
+
+
+def test_banco_da_versao_anterior_recebe_recursos_e_ajustes(tmp_path):
+    import sqlite3
+    caminho = tmp_path / "v2.sqlite3"
+    create_app({"TESTING": True, "DATABASE": str(caminho)})
+    # Simula o banco como era antes desta versão.
+    conn = sqlite3.connect(caminho)
+    conn.executescript("""
+        DELETE FROM situacoes WHERE chave = 'recurso';
+        UPDATE situacoes SET whatsapp = 0;
+        UPDATE modalidades SET prazos_permitidos = 'nao_se_aplica';
+        UPDATE feriados SET dia = 26 WHERE nome = 'Emancipação de Três Rios';
+        UPDATE feriados SET tipo = 'ponto_facultativo'
+         WHERE nome IN ('Carnaval (terça-feira)', 'Dia do Servidor Público');
+        DELETE FROM permissoes WHERE permissao = 'recursos';
+        PRAGMA user_version = 2;
+    """)
+    conn.commit()
+    conn.close()
+
+    create_app({"TESTING": True, "DATABASE": str(caminho)})
+    conn = sqlite3.connect(caminho)
+    assert conn.execute("SELECT fase FROM situacoes WHERE chave = 'recurso'").fetchone() == (
+        "andamento",)
+    assert conn.execute("SELECT whatsapp FROM situacoes WHERE chave = 'publicado'"
+                        ).fetchone() == (1,)
+    assert conn.execute("SELECT prazos_permitidos FROM modalidades WHERE sigla = 'PE'"
+                        ).fetchone() == ("bens_menor_preco,servicos_comuns",)
+    assert conn.execute("SELECT dia FROM feriados WHERE nome = 'Emancipação de Três Rios'"
+                        ).fetchone() == (14,)
+    assert {t for (t,) in conn.execute(
+        "SELECT tipo FROM feriados WHERE nome IN ('Carnaval (terça-feira)',"
+        " 'Dia do Servidor Público')")} == {"feriado"}
+    assert conn.execute("SELECT 1 FROM permissoes WHERE perfil = 'pregoeiro'"
+                        " AND permissao = 'recursos'").fetchone()

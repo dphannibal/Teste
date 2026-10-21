@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block titulo %}Registrar recurso{% endblock %}
+{% block conteudo %}
+<h1>Registrar recurso — {{ edital(lic) }}</h1>
+<p class="sutil">Art. 165 da Lei 14.133/2021: razões em {{ prazos_legais[0] }} dias úteis da intimação ou da lavratura da ata;
+contrarrazões em {{ prazos_legais[1] }} dias úteis após as razões; reconsideração em {{ prazos_legais[2] }} dias úteis;
+decisão da autoridade superior em até {{ prazos_legais[3] }} dias úteis do recebimento dos autos (data estimada).
+Feriados, pontos facultativos e fins de semana não contam.</p>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Data da intimação ou da lavratura da ata *<input type="date" name="intimado_em" required value="{{ dados.intimado_em or '' }}"></label>
+  <label>Recorrente(s)<input name="recorrentes" value="{{ dados.recorrentes or '' }}" placeholder="Ex.: Empresa X Ltda."></label>
+  <label>Observação<textarea name="observacao" rows="2">{{ dados.observacao or '' }}</textarea></label>
+  {% if previa %}
+  <dl class="dados">
+    <dt>Razões até</dt><dd>{{ previa.razoes_ate|data(false) }}</dd>
+    <dt>Contrarrazões até</dt><dd>{{ previa.contrarrazoes_ate|data(false) }}</dd>
+    <dt>Reconsideração até</dt><dd>{{ previa.reconsideracao_ate|data(false) }}</dd>
+    <dt>Decisão até</dt><dd>{{ previa.decisao_ate|data(false) }} <small>(estimada)</small></dd>
+  </dl>
+  <p class="sutil"><small>Prévia para a data acima; os prazos são recalculados ao registrar.</small></p>
+  {% endif %}
+  <div class="acoes">
+    <button class="primario">Registrar recurso</button>
+    <a href="{{ url_for('agenda.detalhe', id_=lic.id) }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

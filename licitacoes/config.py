@@ -82,7 +82,7 @@ def parametros():
         "SELECT status, COUNT(*) FROM licitacoes GROUP BY status").fetchall())
     return render_template(
         "config/parametros.html", modalidades=P.modalidades(), situacoes=P.situacoes(),
-        uso_modalidade=uso_modalidade, uso_situacao=uso_situacao, fases=FASES,
+        uso_modalidade=uso_modalidade, uso_situacao=uso_situacao, fases=FASES, prazos=PRAZOS,
     )
 
 
@@ -120,7 +120,7 @@ def modalidade(id_):
     dados = dict(atual) if atual else {
         "cor": "#1d4f91", "ordem": proxima, "ativa": 1, "credenciamento": 0,
         "exige_equipe": 1, "rotulo_condutor": "Agente de contratação",
-        "prazo_padrao": "nao_se_aplica",
+        "prazo_padrao": "nao_se_aplica", "prazos_permitidos": "nao_se_aplica",
     }
     em_uso = atual and conn.execute(
         "SELECT COUNT(*) FROM licitacoes WHERE modalidade = ?", (atual["nome"],)).fetchone()[0]
@@ -135,6 +135,8 @@ def modalidade(id_):
             "exige_equipe": 1 if f.get("exige_equipe") else 0,
             "rotulo_condutor": f.get("rotulo_condutor", "").strip() or "Agente de contratação",
             "prazo_padrao": f.get("prazo_padrao", ""),
+            "prazos_permitidos": ",".join(p for p in PRAZOS
+                                          if p in f.getlist("prazos_permitidos")),
         }
         erros = []
         if not dados["nome"]:
@@ -148,8 +150,10 @@ def modalidade(id_):
             erros.append("Escolha uma cor válida.")
         if not dados["ordem"].lstrip("-").isdigit():
             erros.append("A ordem deve ser um número.")
-        if dados["prazo_padrao"] not in PRAZOS:
-            erros.append("Selecione o prazo mínimo padrão.")
+        if not dados["prazos_permitidos"]:
+            erros.append("Marque ao menos um objeto/critério de julgamento cabível.")
+        elif dados["prazo_padrao"] not in dados["prazos_permitidos"].split(","):
+            erros.append("O objeto/critério padrão precisa estar entre os cabíveis.")
         if em_uso and dados["credenciamento"] != atual["credenciamento"]:
             erros.append("Não é possível mudar o tipo (credenciamento ou com sessão) de uma "
                          "modalidade já usada em licitações.")
@@ -157,13 +161,15 @@ def modalidade(id_):
         if not _erros(erros):
             valores = (dados["nome"], dados["sigla"], dados["cor"], int(dados["ordem"]),
                        dados["ativa"], dados["credenciamento"], dados["exige_equipe"],
-                       dados["rotulo_condutor"], dados["prazo_padrao"])
+                       dados["rotulo_condutor"], dados["prazo_padrao"],
+                       dados["prazos_permitidos"])
             colunas = ("nome = ?, sigla = ?, cor = ?, ordem = ?, ativa = ?, credenciamento = ?,"
-                       " exige_equipe = ?, rotulo_condutor = ?, prazo_padrao = ?")
+                       " exige_equipe = ?, rotulo_condutor = ?, prazo_padrao = ?,"
+                       " prazos_permitidos = ?")
             if atual is None:
                 conn.execute("INSERT INTO modalidades (nome, sigla, cor, ordem, ativa,"
-                             " credenciamento, exige_equipe, rotulo_condutor, prazo_padrao)"
-                             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", valores)
+                             " credenciamento, exige_equipe, rotulo_condutor, prazo_padrao,"
+                             " prazos_permitidos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", valores)
                 registrar("Cadastro de modalidade", referencia=dados["nome"],
                           detalhes=f"Sigla {dados['sigla']}")
             else:
@@ -175,7 +181,8 @@ def modalidade(id_):
                 mudancas = [f"{rotulo}: {atual[c]} → {dados[c]}" for c, rotulo in (
                     ("nome", "Nome"), ("sigla", "Sigla"), ("cor", "Cor"), ("ativa", "Ativa"),
                     ("exige_equipe", "Exige equipe"), ("rotulo_condutor", "Condutor"),
-                    ("prazo_padrao", "Prazo padrão"))
+                    ("prazo_padrao", "Objeto/critério padrão"),
+                    ("prazos_permitidos", "Objetos/critérios cabíveis"))
                     if str(atual[c]) != str(dados[c])]
                 registrar("Alteração de modalidade", referencia=dados["nome"],
                           detalhes="; ".join(mudancas) or None)
@@ -229,7 +236,7 @@ def situacao(chave):
             abort(404)
     proxima = (conn.execute("SELECT MAX(ordem) FROM situacoes").fetchone()[0] or 0) + 1
     dados = dict(atual) if atual else {"cor": "#475467", "fase": "encerrada", "ordem": proxima,
-                                       "ativa": 1, "sistema": 0}
+                                       "ativa": 1, "sistema": 0, "whatsapp": 0}
 
     if request.method == "POST":
         f = request.form
@@ -241,6 +248,7 @@ def situacao(chave):
             "fase": atual["fase"] if sistema else f.get("fase", ""),
             "ativa": 1 if sistema or f.get("ativa") else 0,
             "sistema": int(sistema),
+            "whatsapp": 1 if f.get("whatsapp") else 0,
         }
         erros = []
         if not dados["nome"]:
@@ -258,22 +266,23 @@ def situacao(chave):
         if not _erros(erros):
             if atual is None:
                 conn.execute(
-                    "INSERT INTO situacoes (chave, nome, cor, fase, ordem, ativa)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO situacoes (chave, nome, cor, fase, ordem, ativa, whatsapp)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (_chave_para(dados["nome"]), dados["nome"], dados["cor"], dados["fase"],
-                     int(dados["ordem"]), dados["ativa"]),
+                     int(dados["ordem"]), dados["ativa"], dados["whatsapp"]),
                 )
                 registrar("Cadastro de situação", referencia=dados["nome"],
                           detalhes=f"Fase: {FASES[dados['fase']]}")
             else:
                 conn.execute(
-                    "UPDATE situacoes SET nome = ?, cor = ?, fase = ?, ordem = ?, ativa = ?"
-                    " WHERE chave = ?",
+                    "UPDATE situacoes SET nome = ?, cor = ?, fase = ?, ordem = ?, ativa = ?,"
+                    " whatsapp = ? WHERE chave = ?",
                     (dados["nome"], dados["cor"], dados["fase"], int(dados["ordem"]),
-                     dados["ativa"], chave),
+                     dados["ativa"], dados["whatsapp"], chave),
                 )
                 mudancas = [f"{rotulo}: {atual[c]} → {dados[c]}" for c, rotulo in (
-                    ("nome", "Nome"), ("cor", "Cor"), ("fase", "Fase"), ("ativa", "Ativa"))
+                    ("nome", "Nome"), ("cor", "Cor"), ("fase", "Fase"), ("ativa", "Ativa"),
+                    ("whatsapp", "No WhatsApp"))
                     if str(atual[c]) != str(dados[c])]
                 registrar("Alteração de situação", referencia=dados["nome"],
                           detalhes="; ".join(mudancas) or None)
@@ -284,6 +293,26 @@ def situacao(chave):
 
     return render_template("config/situacao.html", dados=dados, novo=atual is None,
                            fases={f: FASES[f] for f in FASES_LIVRES}, todas_fases=FASES)
+
+
+@bp.route("/situacoes/whatsapp", methods=["POST"])
+@permissao("parametros")
+def filtro_whatsapp():
+    """Quais situações entram na imagem/texto do WhatsApp."""
+    marcadas = set(request.form.getlist("whatsapp"))
+    conn = get_db()
+    antes = {s["chave"] for s in P.situacoes() if s["whatsapp"]}
+    for s in P.situacoes():
+        conn.execute("UPDATE situacoes SET whatsapp = ? WHERE chave = ?",
+                     (int(s["chave"] in marcadas), s["chave"]))
+    if antes != marcadas:
+        nomes = ", ".join(s["nome"] for s in P.situacoes() if s["chave"] in marcadas)
+        registrar("Alteração de parâmetro", referencia="Situações no WhatsApp",
+                  detalhes=nomes or "Nenhuma")
+    conn.commit()
+    P.invalidar()
+    flash("Filtro do WhatsApp salvo.", "sucesso")
+    return redirect(url_for("config.parametros") + "#whatsapp")
 
 
 @bp.route("/situacoes/<chave>/excluir", methods=["POST"])

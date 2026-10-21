@@ -20,6 +20,7 @@
   </label>
   <label class="opcao"><input type="checkbox" name="ativa" value="1" {% if dados.ativa %}checked{% endif %}> Ativa</label>
   {% endif %}
+  <label class="opcao"><input type="checkbox" name="whatsapp" value="1" {% if dados.whatsapp %}checked{% endif %}> Incluir as licitações nesta situação na exportação para o WhatsApp</label>
   <div class="acoes">
     <button class="primario">Salvar</button>
     <a href="{{ url_for('config.parametros') }}">Cancelar</a>

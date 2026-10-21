@@ -108,6 +108,9 @@ def conteudo(lic):
         quando = "Credenciamento aberto"
         if lic["vigencia_ate"]:
             quando += f" — vigente até {date.fromisoformat(lic['vigencia_ate']):%d/%m/%Y}"
+    elif lic["recurso_id"]:
+        quando = (f"EM RECURSO — razões até {date.fromisoformat(lic['razoes_ate']):%d/%m/%Y}; "
+                  f"contrarrazões até {date.fromisoformat(lic['contrarrazoes_ate']):%d/%m/%Y}")
     elif fase == "suspensa":
         quando = "SUSPENSA — sessão sem nova data"
         if lic["suspensa_em"]:

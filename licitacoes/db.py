@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS modalidades (
     credenciamento   INTEGER NOT NULL DEFAULT 0,  -- aberta, sem sessão, vigência anual
     exige_equipe     INTEGER NOT NULL DEFAULT 1,
     rotulo_condutor  TEXT    NOT NULL DEFAULT 'Agente de contratação',
-    prazo_padrao     TEXT    NOT NULL DEFAULT 'nao_se_aplica'  -- ver perfis.PRAZOS
+    prazo_padrao     TEXT    NOT NULL DEFAULT 'nao_se_aplica',  -- ver perfis.PRAZOS
+    prazos_permitidos TEXT   NOT NULL DEFAULT 'nao_se_aplica'   -- objetos/critérios cabíveis
 );
 
 CREATE TABLE IF NOT EXISTS situacoes (
@@ -95,7 +96,8 @@ CREATE TABLE IF NOT EXISTS situacoes (
     fase     TEXT    NOT NULL,
     ordem    INTEGER NOT NULL DEFAULT 0,
     ativa    INTEGER NOT NULL DEFAULT 1,
-    sistema  INTEGER NOT NULL DEFAULT 0
+    sistema  INTEGER NOT NULL DEFAULT 0,
+    whatsapp INTEGER NOT NULL DEFAULT 0   -- exportada na imagem do WhatsApp
 );
 
 CREATE TABLE IF NOT EXISTS permissoes (
@@ -125,6 +127,21 @@ CREATE TABLE IF NOT EXISTS feriado_transferencias (
     nova_data   TEXT    NOT NULL,
     ato         TEXT,                     -- ex.: Decreto municipal nº 123/2026
     UNIQUE (feriado_id, ano)
+);
+
+CREATE TABLE IF NOT EXISTS recursos (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    licitacao_id        INTEGER NOT NULL REFERENCES licitacoes(id) ON DELETE CASCADE,
+    intimado_em         TEXT    NOT NULL,   -- intimação ou lavratura da ata
+    recorrentes         TEXT,
+    razoes_ate          TEXT    NOT NULL,
+    contrarrazoes_ate   TEXT    NOT NULL,
+    reconsideracao_ate  TEXT    NOT NULL,
+    decisao_ate         TEXT    NOT NULL,   -- estimado: depende do recebimento dos autos
+    status_anterior     TEXT,
+    decidido_em         TEXT,
+    resultado           TEXT,
+    observacao          TEXT
 );
 
 CREATE TABLE IF NOT EXISTS historico (
@@ -166,6 +183,10 @@ COLUNAS_NOVAS = {
     },
     "modalidades": {
         "prazo_padrao": "TEXT NOT NULL DEFAULT 'nao_se_aplica'",
+        "prazos_permitidos": "TEXT NOT NULL DEFAULT 'nao_se_aplica'",
+    },
+    "situacoes": {
+        "whatsapp": "INTEGER NOT NULL DEFAULT 0",
     },
     "usuarios": {
         "preferencias": "TEXT",
@@ -176,19 +197,21 @@ COLUNAS_NOVAS = {
 def _semear_parametros(conn):
     """Valores iniciais de modalidades, situações, permissões e nome do órgão."""
     if not conn.execute("SELECT 1 FROM modalidades LIMIT 1").fetchone():
-        for ordem, (nome, sigla, cor, cred, equipe, condutor, prazo) in enumerate(
+        for ordem, (nome, sigla, cor, cred, equipe, condutor, prazo, permitidos) in enumerate(
                 perfis.MODALIDADES_PADRAO):
             conn.execute(
-                "INSERT INTO modalidades (nome, sigla, cor, ordem, credenciamento,"
-                " exige_equipe, rotulo_condutor, prazo_padrao) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (nome, sigla, cor, ordem, cred, equipe, condutor, prazo),
+                "INSERT INTO modalidades (nome, sigla, cor, ordem, credenciamento, exige_equipe,"
+                " rotulo_condutor, prazo_padrao, prazos_permitidos)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (nome, sigla, cor, ordem, cred, equipe, condutor, prazo, permitidos),
             )
     if not conn.execute("SELECT 1 FROM situacoes LIMIT 1").fetchone():
         for ordem, (chave, nome, cor, fase, sistema) in enumerate(perfis.SITUACOES_PADRAO):
             conn.execute(
-                "INSERT INTO situacoes (chave, nome, cor, fase, ordem, sistema)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (chave, nome, cor, fase, ordem, sistema),
+                "INSERT INTO situacoes (chave, nome, cor, fase, ordem, sistema, whatsapp)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (chave, nome, cor, fase, ordem, sistema,
+                 int(fase in perfis.FASES_DIVULGAVEIS)),
             )
     if not conn.execute("SELECT 1 FROM permissoes LIMIT 1").fetchone():
         for perfil, permissoes in perfis.PERMISSOES_PADRAO.items():
@@ -220,14 +243,41 @@ def _migrar_para_parametros(conn):
 
 def _migrar_para_prazos(conn):
     """Prazo padrão das modalidades já cadastradas e nova permissão de feriados."""
-    for nome, *_, prazo in perfis.MODALIDADES_PADRAO:
+    for nome, *_, prazo, _permitidos in perfis.MODALIDADES_PADRAO:
         conn.execute("UPDATE modalidades SET prazo_padrao = ? WHERE nome = ?"
                      " AND prazo_padrao = 'nao_se_aplica'", (prazo, nome))
     conn.execute("INSERT OR IGNORE INTO permissoes VALUES ('gestor', 'feriados')")
 
 
+def _migrar_para_recursos(conn):
+    """Objeto/critério por modalidade, situação "Em recurso", filtro do WhatsApp e
+    ajustes nos feriados (terça de Carnaval e Dia do Servidor como feriado; emancipação de
+    Três Rios em 14/12)."""
+    for nome, *_, prazo, permitidos in perfis.MODALIDADES_PADRAO:
+        conn.execute("UPDATE modalidades SET prazos_permitidos = ? WHERE nome = ?"
+                     " AND prazos_permitidos = 'nao_se_aplica'", (permitidos, nome))
+    conn.execute("UPDATE modalidades SET prazos_permitidos = prazo_padrao"
+                 " WHERE prazos_permitidos = 'nao_se_aplica'")
+    if not conn.execute("SELECT 1 FROM situacoes WHERE chave = 'recurso'").fetchone():
+        ordem = conn.execute("SELECT ordem FROM situacoes WHERE chave = 'andamento'").fetchone()
+        conn.execute("INSERT INTO situacoes (chave, nome, cor, fase, ordem, sistema)"
+                     " VALUES ('recurso', 'Em recurso', '#c2410c', 'andamento', ?, 1)",
+                     ((ordem[0] if ordem else 0),))
+    marcadores = ",".join("?" * len(perfis.FASES_DIVULGAVEIS))
+    conn.execute(f"UPDATE situacoes SET whatsapp = 1 WHERE fase IN ({marcadores})",
+                 perfis.FASES_DIVULGAVEIS)
+    conn.execute("INSERT OR IGNORE INTO permissoes SELECT perfil, 'recursos' FROM permissoes"
+                 " WHERE permissao = 'suspender'")
+    conn.execute("UPDATE feriados SET tipo = 'feriado', observacao = 'Considerado feriado na"
+                 " secretaria' WHERE nome IN ('Carnaval (terça-feira)', 'Dia do Servidor Público')"
+                 " AND tipo = 'ponto_facultativo'")
+    conn.execute("UPDATE feriados SET dia = 14, observacao = 'Feriado municipal de Três Rios;"
+                 " normalmente transferido — registre a transferência a cada ano'"
+                 " WHERE nome = 'Emancipação de Três Rios' AND dia = 26 AND mes = 12")
+
+
 # Migrações de dados, aplicadas uma única vez (controle por PRAGMA user_version).
-MIGRACOES = [_migrar_para_parametros, _migrar_para_prazos]
+MIGRACOES = [_migrar_para_parametros, _migrar_para_prazos, _migrar_para_recursos]
 
 
 def init_db():

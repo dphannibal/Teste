@@ -10,9 +10,16 @@
     <label>Cor *<input type="color" name="cor" value="{{ dados.cor }}"></label>
     <label>Ordem<input type="number" name="ordem" value="{{ dados.ordem }}"></label>
   </div>
-  <label>Prazo mínimo padrão (dias úteis entre a divulgação e a sessão)
-    <select name="prazo_padrao">{% for k, p in prazos.items() %}<option value="{{ k }}" {% if dados.prazo_padrao == k %}selected{% endif %}>{{ p[0] }} — {{ p[1] }} dias úteis</option>{% endfor %}</select>
-    <small>Sugestão no cadastro da licitação; o enquadramento pode ser trocado em cada licitação.</small></label>
+  <fieldset>
+    <legend>Objetos e critérios de julgamento cabíveis (definem o prazo mínimo legal)</legend>
+    {% set permitidos = (dados.prazos_permitidos or '').split(',') %}
+    {% for k, p in prazos.items() %}
+    <label class="opcao"><input type="checkbox" name="prazos_permitidos" value="{{ k }}" {% if k in permitidos %}checked{% endif %}>
+      <span>{{ p[0] }} — <strong>{{ p[1] }} dias úteis</strong></span></label>
+    {% endfor %}
+    <label>Padrão ao cadastrar
+      <select name="prazo_padrao">{% for k, p in prazos.items() %}<option value="{{ k }}" {% if dados.prazo_padrao == k %}selected{% endif %}>{{ p[0] }}</option>{% endfor %}</select></label>
+  </fieldset>
   <label>Quem conduz<input name="rotulo_condutor" value="{{ dados.rotulo_condutor or '' }}" placeholder="Ex.: Pregoeiro(a) ou Agente de contratação"></label>
   <label class="opcao"><input type="checkbox" name="exige_equipe" value="1" {% if dados.exige_equipe %}checked{% endif %}> Exige equipe (condutor e dois membros)</label>
   <label class="opcao"><input type="checkbox" name="credenciamento" value="1" {% if dados.credenciamento %}checked{% endif %} {% if em_uso %}disabled{% endif %}> Funciona como credenciamento: sem sessão pública, aberto com vigência renovada a cada ano</label>

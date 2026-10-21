@@ -14,9 +14,13 @@ from .auth import login_obrigatorio, permissao
 from .db import get_db, registrar
 from .perfis import (
     COLUNAS, COLUNAS_PADRAO, EQUIPE_OBRIGATORIA, FASES_ABERTAS, FASES_ANTES_DA_SESSAO,
-    FASES_CREDENCIAMENTO, FASES_DA_ACAO, FASES_DIVULGAVEIS, FASES_EM_ANDAMENTO, FUNCOES_EQUIPE,
-    OCORRENCIAS, PRAZOS, VINCULOS_EFETIVOS,
+    FASES_CREDENCIAMENTO, FASES_DA_ACAO, FASES_EM_ANDAMENTO, FUNCOES_EQUIPE,
+    OCORRENCIAS, PRAZO_CONTRARRAZOES, PRAZO_DECISAO, PRAZO_RAZOES, PRAZO_RECONSIDERACAO,
+    PRAZOS, VINCULOS_EFETIVOS,
 )
+
+RECURSO = "recurso"  # situação do sistema enquanto corre um recurso
+RESULTADOS_RECURSO = ["Não provido", "Provido", "Parcialmente provido", "Desistência"]
 
 bp = Blueprint("agenda", __name__)
 
@@ -48,12 +52,16 @@ ROTULOS = {
 CONSULTA_BASE = """
     SELECT l.*,
            a.nome AS agente_nome, m1.nome AS membro1_nome, m2.nome AS membro2_nome,
-           m3.nome AS membro3_nome
+           m3.nome AS membro3_nome, r.recurso_id, r.intimado_em, r.recorrentes, r.razoes_ate,
+           r.contrarrazoes_ate, r.reconsideracao_ate, r.decisao_ate
       FROM licitacoes l
       LEFT JOIN servidores a  ON a.id  = l.agente_id
       LEFT JOIN servidores m1 ON m1.id = l.membro1_id
       LEFT JOIN servidores m2 ON m2.id = l.membro2_id
       LEFT JOIN servidores m3 ON m3.id = l.membro3_id
+      LEFT JOIN (SELECT id AS recurso_id, licitacao_id, intimado_em, recorrentes, razoes_ate,
+                        contrarrazoes_ate, reconsideracao_ate, decisao_ate
+                   FROM recursos WHERE decidido_em IS NULL) r ON r.licitacao_id = l.id
 """
 
 
@@ -64,6 +72,8 @@ def situacao(lic):
         return f"{nome} — sessão não aberta"
     if fase == "remarcada" and lic["ocorrencia"] == "remarcada_retificacao":
         return f"{nome} — edital retificado"
+    if lic["status"] == RECURSO and lic["razoes_ate"]:
+        return f"{nome} — {etapa_recurso(lic)[0].lower()}"
     if fase == "andamento" and lic["suspensa_em"]:
         return f"{nome} — suspensa p/ análise documental"
     if fase == "andamento" and lic["ocorrencia"] == "continuacao":
@@ -72,6 +82,27 @@ def situacao(lic):
 
 
 identificacao = P.edital
+
+
+def etapa_recurso(lic):
+    """(etapa atual, prazo da etapa, vencido?) de um recurso em curso."""
+    hoje = date.today().isoformat()
+    for rotulo, campo in (("Razões", "razoes_ate"), ("Contrarrazões", "contrarrazoes_ate"),
+                          ("Reconsideração", "reconsideracao_ate"),
+                          ("Decisão superior", "decisao_ate")):
+        if hoje <= lic[campo]:
+            return rotulo, lic[campo], False
+    return "Decisão superior", lic["decisao_ate"], True
+
+
+def prazos_recurso(intimado_em):
+    """Prazos do art. 165, encadeados e em dias úteis, a partir da intimação/ata."""
+    razoes = feriados.contar_dias_uteis(intimado_em, PRAZO_RAZOES)
+    contrarrazoes = feriados.contar_dias_uteis(razoes, PRAZO_CONTRARRAZOES)
+    reconsideracao = feriados.contar_dias_uteis(contrarrazoes, PRAZO_RECONSIDERACAO)
+    decisao = feriados.contar_dias_uteis(reconsideracao, PRAZO_DECISAO)
+    return {"razoes_ate": razoes.isoformat(), "contrarrazoes_ate": contrarrazoes.isoformat(),
+            "reconsideracao_ate": reconsideracao.isoformat(), "decisao_ate": decisao.isoformat()}
 
 
 def _buscar(id_):
@@ -108,6 +139,12 @@ def _ler_data(texto, com_hora):
     return dt.strftime("%Y-%m-%dT%H:%M" if com_hora else "%Y-%m-%d")
 
 
+def prazos_da_modalidade(modalidade):
+    """Objetos/critérios de julgamento cabíveis na modalidade (definem o prazo mínimo)."""
+    permitidos = [p for p in (modalidade.get("prazos_permitidos") or "").split(",") if p in PRAZOS]
+    return permitidos or [modalidade.get("prazo_padrao") or "nao_se_aplica"]
+
+
 def criticar_sessao(dia_hora, divulgacao, prazo, confirmar_ponto):
     """Crítica da data da sessão: fim de semana, feriado, ponto facultativo e prazo mínimo
     legal contado da divulgação do edital. Retorna (erros, pontos facultativos a confirmar)."""
@@ -116,14 +153,14 @@ def criticar_sessao(dia_hora, divulgacao, prazo, confirmar_ponto):
     if pontos and confirmar_ponto:
         pontos = []
     erros += [f"{p} Confirme se haverá expediente para manter a data." for p in pontos]
-    descricao, dias = PRAZOS.get(prazo, PRAZOS["nao_se_aplica"])
+    descricao, dias, conta_divulgacao = PRAZOS.get(prazo, PRAZOS["nao_se_aplica"])
     if dias:
         if not divulgacao:
             erros.append("Informe a data de publicação do edital para conferir o prazo mínimo "
                          "legal.")
         else:
             base = date.fromisoformat(divulgacao)
-            minima = feriados.data_minima_sessao(base, dias)
+            minima = feriados.data_minima_sessao(base, dias, conta_divulgacao)
             if dia < minima:
                 erros.append(
                     f"Prazo mínimo legal não respeitado: {descricao} exige {dias} dias úteis. "
@@ -155,6 +192,11 @@ def _validar(form, atual=None):
         erros.append(f"{modalidade['nome']} só pode estar em andamento ou concluído(a).")
     elif fase in FASES_DA_ACAO and (atual is None or atual["status"] != dados["status"]):
         erros.append("Para suspender ou remarcar a sessão, use o botão “Suspender / remarcar”.")
+    elif dados["status"] == RECURSO and (atual is None or atual["status"] != RECURSO):
+        erros.append("Para registrar recurso, use o botão “Registrar recurso”.")
+    elif atual is not None and atual["status"] == RECURSO and dados["status"] != RECURSO:
+        erros.append("A licitação está em recurso: registre a decisão do recurso para mudar a "
+                     "situação.")
 
     # O edital é digitado só com o número; a sigla vem da modalidade nas visualizações.
     if modalidade["sigla"]:
@@ -198,9 +240,10 @@ def _validar(form, atual=None):
     if credenciamento:
         dados["prazo_hipotese"] = "nao_se_aplica"
     dados["prazo_hipotese"] = dados["prazo_hipotese"] or modalidade.get("prazo_padrao")
-    if dados["prazo_hipotese"] not in PRAZOS:
-        erros.append("Selecione o enquadramento do prazo mínimo legal.")
-        dados["prazo_hipotese"] = "nao_se_aplica"
+    if dados["prazo_hipotese"] not in prazos_da_modalidade(modalidade):
+        erros.append(f"O objeto/critério de julgamento escolhido não cabe na modalidade "
+                     f"{modalidade['nome']}.")
+        dados["prazo_hipotese"] = modalidade.get("prazo_padrao") or "nao_se_aplica"
 
     # A data só é criticada quando muda (ou quando o edital é publicado), para não travar a
     # edição de licitações antigas.
@@ -402,7 +445,9 @@ def painel():
     # Licitações em andamento: publicadas, remarcadas e com sessão aberta, inclusive as
     # suspensas depois de abertas. O credenciamento tem quadro próprio.
     em_andamento = ordenar([l for l in _por_fases(*FASES_EM_ANDAMENTO)
-                            if not P.eh_credenciamento(l["modalidade"])])
+                            if not P.eh_credenciamento(l["modalidade"]) and not l["recurso_id"]])
+    em_recurso = sorted((l for l in _por_fases("andamento") if l["recurso_id"]),
+                        key=lambda l: etapa_recurso(l)[1])
     sessoes_hoje = sorted((l for l in em_andamento if not l["suspensa_em"] and l["data_sessao"]
                            and l["data_sessao"].startswith(hoje.isoformat())),
                           key=lambda l: l["data_sessao"])
@@ -417,6 +462,7 @@ def painel():
 
     return render_template(
         "agenda/painel.html", em_andamento=em_andamento, sessoes_hoje=sessoes_hoje,
+        em_recurso=em_recurso, etapa_recurso=etapa_recurso,
         suspensas=suspensas, credenciamentos=credenciamentos, contagem=contagem,
         situacoes=P.situacoes(), agora=agora, hoje=hoje.isoformat(),
         alerta_renovacao=(hoje + timedelta(days=30)).isoformat(),
@@ -484,10 +530,11 @@ def lista():
 
 def _render_form(dados, titulo, atual=None, pendentes=(), pontos=()):
     situacoes = [s for s in P.situacoes(True, atual and atual["status"])
-                 if s["fase"] not in FASES_DA_ACAO or (atual and atual["status"] == s["chave"])]
+                 if (s["fase"] not in FASES_DA_ACAO and s["chave"] != RECURSO)
+                 or (atual and atual["status"] == s["chave"])]
     return render_template(
         "agenda/form.html", dados=dados, titulo=titulo, atual=atual, pendentes=pendentes,
-        pontos=pontos, prazos=PRAZOS,
+        pontos=pontos, prazos=PRAZOS, prazos_da_modalidade=prazos_da_modalidade,
         nao_uteis=feriados.dias_nao_uteis(date.today() - timedelta(days=60),
                                           date.today() + timedelta(days=730)),
         modalidades=P.modalidades(True, atual and atual["modalidade"]), situacoes=situacoes,
@@ -544,16 +591,19 @@ def detalhe(id_):
             ids, lic["data_sessao"], fase == "andamento",
             equipe.ler_mantidos(lic["impedimentos_mantidos"]), manter=False)[0]
     chave_prazo = lic["prazo_hipotese"] or P.modalidade(lic["modalidade"])["prazo_padrao"]
-    descricao_prazo, dias_prazo = PRAZOS.get(chave_prazo, PRAZOS["nao_se_aplica"])
+    descricao_prazo, dias_prazo, conta = PRAZOS.get(chave_prazo, PRAZOS["nao_se_aplica"])
     divulgacao = lic["retificado_em"] or lic["data_publicacao"]
-    minima = (feriados.data_minima_sessao(date.fromisoformat(divulgacao), dias_prazo)
+    minima = (feriados.data_minima_sessao(date.fromisoformat(divulgacao), dias_prazo, conta)
               if divulgacao and dias_prazo else None)
+    recursos = get_db().execute("SELECT * FROM recursos WHERE licitacao_id = ? ORDER BY id DESC",
+                                (id_,)).fetchall()
     if lic["data_sessao"] and fase in FASES_ABERTAS:
         motivos = feriados.motivos(date.fromisoformat(lic["data_sessao"][:10]))
         alertas += [f"A data da sessão é {feriados.descrever(m).lower()}." for m in motivos]
     return render_template(
         "agenda/detalhe.html", lic=lic, historico=historico, escalados=escalados,
-        prazo=(descricao_prazo, dias_prazo), data_minima=minima,
+        prazo=(descricao_prazo, dias_prazo), data_minima=minima, recursos=recursos,
+        pode_recorrer=_pode_recorrer(lic), etapa_recurso=etapa_recurso,
         alertas_equipe=alertas, credenciamento=P.eh_credenciamento(lic["modalidade"]),
         fase=fase, efetivos=VINCULOS_EFETIVOS, funcoes=FUNCOES_EQUIPE,
         pode_suspender=bool(_ocorrencias_possiveis(lic)),
@@ -635,7 +685,7 @@ def _descrever_alteracoes(antes, depois):
 
 def _ocorrencias_possiveis(lic):
     """Suspensões e remarcações cabíveis conforme a sessão já tenha sido aberta ou não."""
-    if P.eh_credenciamento(lic["modalidade"]):
+    if P.eh_credenciamento(lic["modalidade"]) or lic["status"] == RECURSO:
         return {}
     fase = P.fase(lic["status"])
     if fase in FASES_ANTES_DA_SESSAO:
@@ -766,6 +816,109 @@ def suspender(id_):
                            pendentes=pendentes, pontos=pontos, fase=P.fase(lic["status"]))
 
 
+def _pode_recorrer(lic):
+    return (P.fase(lic["status"]) == "andamento" and lic["status"] != RECURSO
+            and not P.eh_credenciamento(lic["modalidade"]) and not lic["recurso_id"])
+
+
+@bp.route("/licitacoes/<int:id_>/recurso", methods=["GET", "POST"])
+@permissao("recursos")
+def recurso(id_):
+    """Recurso (art. 165): calcula os prazos de razões, contrarrazões, reconsideração e
+    decisão, em dias úteis, a partir da intimação ou da lavratura da ata."""
+    lic = _buscar(id_)
+    if not _pode_recorrer(lic):
+        abort(400, "Só cabe registrar recurso com a sessão em andamento e sem outro recurso "
+                   "pendente.")
+    dados = {"intimado_em": date.today().isoformat()}
+    if request.method == "POST":
+        dados = {c: request.form.get(c, "").strip()
+                 for c in ("intimado_em", "recorrentes", "observacao")}
+        try:
+            intimado = date.fromisoformat(dados["intimado_em"])
+        except ValueError:
+            flash("Informe a data da intimação ou da lavratura da ata.", "erro")
+        else:
+            prazos = prazos_recurso(intimado)
+            conn = get_db()
+            conn.execute(
+                "INSERT INTO recursos (licitacao_id, intimado_em, recorrentes, razoes_ate,"
+                " contrarrazoes_ate, reconsideracao_ate, decisao_ate, status_anterior,"
+                " observacao) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (id_, intimado.isoformat(), dados["recorrentes"] or None, prazos["razoes_ate"],
+                 prazos["contrarrazoes_ate"], prazos["reconsideracao_ate"],
+                 prazos["decisao_ate"], lic["status"], dados["observacao"] or None),
+            )
+            conn.execute("UPDATE licitacoes SET status = ?, suspensa_em = NULL,"
+                         " motivo_suspensao = NULL, ocorrencia = NULL,"
+                         " atualizado_em = datetime('now', 'localtime') WHERE id = ?",
+                         (RECURSO, id_))
+            registrar("Recurso interposto", referencia=identificacao(lic), licitacao_id=id_,
+                      detalhes=f"Intimação/ata em {_formatar(intimado.isoformat())}. Razões até "
+                               f"{_formatar(prazos['razoes_ate'])}; contrarrazões até "
+                               f"{_formatar(prazos['contrarrazoes_ate'])}"
+                               + (f". Recorrente(s): {dados['recorrentes']}"
+                                  if dados["recorrentes"] else ""))
+            conn.commit()
+            flash("Recurso registrado.", "sucesso")
+            return redirect(url_for("agenda.detalhe", id_=id_))
+    previa = None
+    try:
+        previa = prazos_recurso(date.fromisoformat(dados["intimado_em"]))
+    except ValueError:
+        pass
+    return render_template("agenda/recurso.html", lic=lic, dados=dados, previa=previa,
+                           prazos_legais=(PRAZO_RAZOES, PRAZO_CONTRARRAZOES,
+                                          PRAZO_RECONSIDERACAO, PRAZO_DECISAO))
+
+
+@bp.route("/licitacoes/<int:id_>/recurso/decisao", methods=["GET", "POST"])
+@permissao("recursos")
+def decidir_recurso(id_):
+    lic = _buscar(id_)
+    if not lic["recurso_id"]:
+        abort(400, "Não há recurso pendente nesta licitação.")
+    anterior = get_db().execute("SELECT status_anterior FROM recursos WHERE id = ?",
+                                (lic["recurso_id"],)).fetchone()[0]
+    destinos = [s for s in P.situacoes(True) if s["fase"] in ("andamento", "concluida",
+                                                              "encerrada")
+                and s["chave"] != RECURSO]
+    dados = {"decidido_em": date.today().isoformat(),
+             "status": anterior if anterior and anterior != RECURSO else "andamento"}
+    if request.method == "POST":
+        dados = {c: request.form.get(c, "").strip()
+                 for c in ("decidido_em", "resultado", "status", "observacao")}
+        erros = []
+        try:
+            decidido = date.fromisoformat(dados["decidido_em"])
+        except ValueError:
+            erros.append("Informe a data da decisão.")
+        if dados["resultado"] not in RESULTADOS_RECURSO:
+            erros.append("Informe o resultado do recurso.")
+        if dados["status"] not in {s["chave"] for s in destinos}:
+            erros.append("Escolha a situação da licitação após a decisão.")
+        if erros:
+            for e in erros:
+                flash(e, "erro")
+        else:
+            conn = get_db()
+            conn.execute("UPDATE recursos SET decidido_em = ?, resultado = ?,"
+                         " observacao = COALESCE(?, observacao) WHERE id = ?",
+                         (decidido.isoformat(), dados["resultado"], dados["observacao"] or None,
+                          lic["recurso_id"]))
+            conn.execute("UPDATE licitacoes SET status = ?,"
+                         " atualizado_em = datetime('now', 'localtime') WHERE id = ?",
+                         (dados["status"], id_))
+            registrar("Decisão do recurso", referencia=identificacao(lic), licitacao_id=id_,
+                      detalhes=f"{dados['resultado']} em {_formatar(decidido.isoformat())}. "
+                               f"Situação: {P.situacao(dados['status'])['nome']}")
+            conn.commit()
+            flash("Decisão do recurso registrada.", "sucesso")
+            return redirect(url_for("agenda.detalhe", id_=id_))
+    return render_template("agenda/decisao_recurso.html", lic=lic, dados=dados,
+                           destinos=destinos, resultados=RESULTADOS_RECURSO)
+
+
 @bp.route("/licitacoes/<int:id_>/renovar", methods=["POST"])
 @permissao("editar")
 def renovar(id_):
@@ -804,7 +957,10 @@ def excluir(id_):
 def _abertas():
     """Licitações abertas ou em andamento: sessões agendadas, depois as suspensas antes da
     abertura e, por fim, os credenciamentos."""
-    return sorted(_por_fases(*FASES_DIVULGAVEIS), key=lambda l: (
+    chaves = [s["chave"] for s in P.situacoes() if s["whatsapp"]] or [""]
+    linhas = get_db().execute(
+        CONSULTA_BASE + f" WHERE l.status IN ({_em(chaves)})", chaves).fetchall()
+    return sorted(linhas, key=lambda l: (
         P.eh_credenciamento(l["modalidade"]),
         P.fase(l["status"]) == "suspensa" or bool(l["suspensa_em"]),
         l["data_sessao"] or l["vigencia_ate"] or "",
