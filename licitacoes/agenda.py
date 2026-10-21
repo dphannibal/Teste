@@ -611,13 +611,26 @@ def detalhe(id_):
     )
 
 
+def _alterada_por_outro(lic):
+    """Aviso quando outra pessoa salvou a licitação enquanto ela estava aberta na edição."""
+    ultima = get_db().execute(
+        "SELECT h.data, u.nome FROM historico h LEFT JOIN usuarios u ON u.id = h.usuario_id"
+        " WHERE h.licitacao_id = ? ORDER BY h.id DESC LIMIT 1", (lic["id"],)).fetchone()
+    quem = f" por {ultima['nome']} às {ultima['data'][11:16]}" if ultima and ultima["nome"] else ""
+    flash(f"Esta licitação foi alterada{quem} enquanto você a editava. Suas alterações não "
+          "foram salvas: confira os dados atuais abaixo e refaça a alteração.", "erro")
+
+
 @bp.route("/licitacoes/<int:id_>/editar", methods=["GET", "POST"])
 @permissao("editar")
 def editar(id_):
     lic = _buscar(id_)
     dados = dict(lic)
     pendentes = pontos = []
-    if request.method == "POST":
+    versao_aberta = request.form.get("versao", type=int)
+    if request.method == "POST" and versao_aberta is not None and versao_aberta != lic["versao"]:
+        _alterada_por_outro(lic)
+    elif request.method == "POST":
         dados, erros, pendentes, pontos = _validar(request.form, lic)
         if erros:
             for e in erros:
@@ -630,12 +643,19 @@ def editar(id_):
                 alteracoes.append("Mantido membro impedido (sessão em andamento)")
             if alteracoes:
                 conn = get_db()
-                conn.execute(
+                # Só grava se ninguém tiver salvo a licitação desde que ela foi lida.
+                cur = conn.execute(
                     f"UPDATE licitacoes SET {', '.join(c + ' = ?' for c in CAMPOS)},"
                     " impedimentos_mantidos = ?,"
-                    " atualizado_em = datetime('now', 'localtime') WHERE id = ?",
-                    (*[dados[c] for c in CAMPOS], dados["impedimentos_mantidos"], id_),
+                    " atualizado_em = datetime('now', 'localtime') WHERE id = ? AND versao = ?",
+                    (*[dados[c] for c in CAMPOS], dados["impedimentos_mantidos"], id_,
+                     lic["versao"]),
                 )
+                if cur.rowcount == 0:
+                    conn.rollback()
+                    lic = _buscar(id_)
+                    _alterada_por_outro(lic)
+                    return _render_form(dict(lic), f"Editar {identificacao(lic)}", lic)
                 if lic["status"] != dados["status"]:
                     # Suspensão e remarcação valem só para a fase em que foram registradas.
                     conn.execute("UPDATE licitacoes SET suspensa_em = NULL, ocorrencia = NULL,"

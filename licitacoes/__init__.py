@@ -13,16 +13,22 @@ from .perfis import PERFIS
 
 def create_app(config=None):
     app = Flask(__name__, instance_relative_config=True)
-    os.makedirs(app.instance_path, exist_ok=True)
+    # Banco, chave das sessões e brasão ficam na pasta de dados. Numa instalação em pasta
+    # compartilhada, ela deve ficar FORA do compartilhamento (variável AGENDA_DADOS ou
+    # opção --dados do servidor), para os usuários da rede não copiarem nem alterarem o banco.
+    dados = (config or {}).get("PASTA_DADOS") or os.environ.get("AGENDA_DADOS") \
+        or app.instance_path
+    os.makedirs(dados, exist_ok=True)
 
     app.config.update(
-        DATABASE=os.path.join(app.instance_path, "licitacoes.sqlite3"),
-        SECRET_KEY=os.environ.get("SECRET_KEY") or _chave_secreta(app.instance_path),
+        PASTA_DADOS=dados,
+        DATABASE=os.path.join(dados, "licitacoes.sqlite3"),
+        SECRET_KEY=os.environ.get("SECRET_KEY") or _chave_secreta(dados),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=8 * 60 * 60,  # uma jornada de trabalho
         NOME_ORGAO=os.environ.get("NOME_ORGAO", "Secretaria"),
-        PASTA_ARQUIVOS=app.instance_path,      # brasão e outros arquivos enviados
+        PASTA_ARQUIVOS=dados,                  # brasão e outros arquivos enviados
         MAX_CONTENT_LENGTH=8 * 1024 * 1024,     # limite de envio de arquivos
     )
     if config:

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS licitacoes (
     impedimentos_mantidos TEXT,           -- ids de afastamentos aceitos com a sessão em andamento
     prazo_hipotese    TEXT,               -- enquadramento do prazo mínimo (perfis.PRAZOS)
     retificado_em     TEXT,               -- republicação do edital retificado (reinicia o prazo)
+    versao            INTEGER NOT NULL DEFAULT 0,  -- muda a cada alteração (edição simultânea)
     observacoes       TEXT,
     criado_por        INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
     criado_em         TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
@@ -159,9 +160,14 @@ CREATE INDEX IF NOT EXISTS idx_historico_licitacao ON historico(licitacao_id);
 """
 
 
+# Com vários usuários ao mesmo tempo, quem grava espera a gravação do outro terminar
+# (até 15 s) em vez de receber erro de banco ocupado.
+ESPERA_BANCO_OCUPADO = 15
+
+
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(current_app.config["DATABASE"])
+        g.db = sqlite3.connect(current_app.config["DATABASE"], timeout=ESPERA_BANCO_OCUPADO)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
@@ -181,6 +187,7 @@ COLUNAS_NOVAS = {
         "impedimentos_mantidos": "TEXT",
         "prazo_hipotese": "TEXT",
         "retificado_em": "TEXT",
+        "versao": "INTEGER NOT NULL DEFAULT 0",
     },
     "modalidades": {
         "prazo_padrao": "TEXT NOT NULL DEFAULT 'nao_se_aplica'",
@@ -292,6 +299,14 @@ def init_db():
         for nome, tipo in colunas.items():
             if nome not in existentes:
                 conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}")
+    # Cada alteração da licitação incrementa "versao": é assim que a edição percebe que
+    # outro usuário salvou a mesma licitação enquanto ela estava aberta.
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS licitacoes_versao AFTER UPDATE ON licitacoes
+        FOR EACH ROW WHEN NEW.versao = OLD.versao
+        BEGIN
+            UPDATE licitacoes SET versao = OLD.versao + 1 WHERE id = NEW.id;
+        END""")
     _semear_parametros(conn)
     versao = conn.execute("PRAGMA user_version").fetchone()[0]
     for numero, migracao in enumerate(MIGRACOES, start=1):

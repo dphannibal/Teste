@@ -124,7 +124,54 @@ Quem tem a permissão de parâmetros (Administrador e Gestor, por padrão) alter
 
 Tudo fica registrado na auditoria.
 
-## Instalação no servidor da intranet
+## Instalação em pasta compartilhada (recomendada)
+
+O programa fica numa pasta compartilhada e roda **num único computador**, o que hospeda a
+pasta. Os demais usuários abrem o sistema **pela pasta compartilhada**, com dois cliques no
+atalho “Abrir Agenda de Licitações”, sem instalar nada. Vários usuários podem usar ao mesmo
+tempo.
+
+```
+\\SERVIDOR\Licitacoes\                    ← pasta compartilhada (somente leitura para os usuários)
+    Abrir Agenda de Licitações.url          ← os usuários abrem este atalho
+    Iniciar servidor.bat                    ← só no computador que hospeda a pasta
+    licitacoes\, servidor.py, ...
+
+C:\ProgramData\AgendaLicitacoes\           ← dados: NÃO compartilhar
+    licitacoes.sqlite3, secret_key, brasao.png, venv\
+```
+
+**No computador que hospeda a pasta** (fica ligado durante o expediente):
+
+1. Instale o [Python 3.10 ou mais novo](https://www.python.org/downloads/), marcando
+   “Add python.exe to PATH”.
+2. Copie o programa para a pasta (ex.: `C:\Licitacoes`) e compartilhe-a na rede com
+   permissão **somente leitura** para os usuários.
+3. Dê dois cliques em **`Iniciar servidor.bat`**. Na primeira vez ele prepara o ambiente e
+   mostra a senha temporária do usuário `admin`. Deixe a janela aberta.
+4. Se o Windows perguntar, permita o acesso do Python às **redes privadas**.
+5. Para iniciar junto com o Windows: tecle `Win + R`, digite `shell:startup` e coloque ali
+   um atalho para `Iniciar servidor.bat`.
+
+**Nos demais computadores:** abra `\\SERVIDOR\Licitacoes` e dê dois cliques em
+**“Abrir Agenda de Licitações”** (pode arrastá-lo para a área de trabalho). O atalho é
+criado pelo servidor ao iniciar, com o nome do computador; se a rede não resolver nomes,
+inicie com `Iniciar servidor.bat --endereco 192.168.0.10` (o IP do computador hospedeiro).
+
+**Por que não abrir o programa direto da pasta em cada computador?** O banco de dados
+(SQLite) não suporta gravações simultâneas de vários computadores sobre uma pasta de rede —
+o arquivo pode corromper — e cada computador precisaria ter o Python. Com o sistema rodando
+num só computador, todos usam o mesmo banco com segurança.
+
+**Acesso simultâneo:** o servidor atende vários usuários em paralelo; quando duas pessoas
+gravam ao mesmo tempo, uma espera a outra terminar. Se duas pessoas editarem a **mesma
+licitação** ao mesmo tempo, a segunda é avisada de que a licitação foi alterada (e por quem)
+e nada é sobrescrito: ela confere os dados atuais e refaz a alteração.
+
+**Backup:** copie a pasta `C:\ProgramData\AgendaLicitacoes` (de preferência com o
+servidor fechado).
+
+## Instalação manual (linha de comando)
 
 Ao atualizar uma instalação existente, rode de novo `pip install -r requirements.txt`
 (a imagem do WhatsApp usa a biblioteca Pillow). O banco é atualizado sozinho na partida.
@@ -159,10 +206,12 @@ flask --app licitacoes criar-admin --login admin
 | `NOME_ORGAO`     | Nome exibido no topo das páginas (ex.: "Secretaria de Administração") |
 | `ADMIN_PASSWORD` | Senha inicial do admin no primeiro uso                               |
 | `SECRET_KEY`     | Chave das sessões; se omitida, é gerada em `instance/secret_key`     |
+| `AGENDA_DADOS`   | Pasta de dados (o mesmo que `--dados`); padrão: `instance/`          |
 
 ### Recomendações
 
-- **Backup**: copie periodicamente a pasta `instance/` (contém o banco `licitacoes.sqlite3`).
+- **Backup**: copie periodicamente a pasta de dados (`instance/` ou a indicada em `--dados`),
+  que contém o banco `licitacoes.sqlite3`.
 - **Firewall**: libere a porta escolhida apenas para a rede interna.
 - **Serviço**: para iniciar junto com o servidor, use o Agendador de Tarefas / NSSM no
   Windows, ou um serviço `systemd` no Linux.
@@ -179,7 +228,8 @@ python -m pytest
 Estrutura:
 
 ```
-servidor.py              inicia o servidor (Waitress)
+servidor.py              inicia o servidor (Waitress) e cria o atalho para os usuários
+Iniciar servidor.bat     inicia o servidor no Windows (pasta compartilhada)
 licitacoes/
   __init__.py            criação da aplicação, CSRF, filtros, comandos
   perfis.py              perfis e valores padrão dos parâmetros
