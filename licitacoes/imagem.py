@@ -10,12 +10,8 @@ from . import parametros
 
 LARGURA, ALTURA = 1080, 1920
 MARGEM = 48
-TOPO = 300
-RODAPE = 96
-ESPACO_ENTRE_CARTOES = 28
-PADDING = 34
+RODAPE = 80
 BARRA = 14
-LARGURA_TEXTO = LARGURA - 2 * MARGEM - 2 * PADDING - BARRA
 
 FUNDO = "#f3f5f8"
 PRIMARIA = "#1d4f91"
@@ -33,15 +29,46 @@ def _fonte(peso, tamanho):
     return ImageFont.truetype(os.path.join(PASTA_FONTES, arquivo), tamanho)
 
 
-# Estilo de cada parte do cartão: (peso, tamanho, altura da linha, máximo de linhas).
-ESTILOS = {
-    "titulo": ("negrito", 66, 78, 1),
-    "modalidade": ("semi", 34, 46, 1),
-    "quando": ("semi", 36, 48, 2),
-    "objeto": ("normal", 32, 42, 4),
-    "equipe": ("normal", 30, 40, 2),
-}
-ESPACO_APOS = {"titulo": 2, "modalidade": 16, "quando": 14, "objeto": 16, "equipe": 0}
+# Layouts do mais confortável ao mais compacto. Escolhe-se o primeiro em que todas as
+# licitações cabem numa imagem; se nem o compacto basta, ele é usado em várias imagens.
+# A legibilidade é preservada: nenhum texto fica abaixo de 26 px numa imagem de 1080 px
+# de largura (o tamanho de leitura de uma legenda na tela do celular).
+# Estilos: (peso, tamanho, altura da linha, máximo de linhas).
+LAYOUTS = [
+    {
+        "nome": "grande", "padding": 34, "espaco": 28,
+        "cabecalho": (72, 36, 30), "modalidade_ao_lado": False, "equipe_unida": False,
+        "estilos": {"titulo": ("negrito", 66, 78, 1), "modalidade": ("semi", 34, 46, 1),
+                    "quando": ("semi", 36, 48, 2), "objeto": ("normal", 32, 42, 4),
+                    "equipe": ("normal", 30, 40, 2)},
+        "espaco_apos": {"titulo": 2, "modalidade": 16, "quando": 14, "objeto": 16, "equipe": 0},
+    },
+    {
+        "nome": "medio", "padding": 26, "espaco": 20,
+        "cabecalho": (60, 32, 27), "modalidade_ao_lado": True, "equipe_unida": False,
+        "estilos": {"titulo": ("negrito", 54, 64, 1), "modalidade": ("semi", 30, 64, 1),
+                    "quando": ("semi", 31, 40, 2), "objeto": ("normal", 28, 36, 3),
+                    "equipe": ("normal", 27, 35, 2)},
+        "espaco_apos": {"titulo": 6, "modalidade": 6, "quando": 8, "objeto": 10, "equipe": 0},
+    },
+    {
+        "nome": "compacto", "padding": 20, "espaco": 14,
+        "cabecalho": (54, 30, 26), "modalidade_ao_lado": True, "equipe_unida": True,
+        "estilos": {"titulo": ("negrito", 46, 54, 1), "modalidade": ("semi", 26, 54, 1),
+                    "quando": ("semi", 28, 35, 2), "objeto": ("normal", 26, 33, 2),
+                    "equipe": ("normal", 26, 33, 2)},
+        "espaco_apos": {"titulo": 4, "modalidade": 4, "quando": 6, "objeto": 6, "equipe": 0},
+    },
+    {
+        # Mesmo tamanho mínimo de letra do compacto, com menos espaço entre as linhas.
+        "nome": "denso", "padding": 16, "espaco": 10,
+        "cabecalho": (48, 26, 26), "modalidade_ao_lado": True, "equipe_unida": True,
+        "estilos": {"titulo": ("negrito", 40, 46, 1), "modalidade": ("semi", 26, 46, 1),
+                    "quando": ("semi", 26, 31, 2), "objeto": ("normal", 26, 31, 2),
+                    "equipe": ("normal", 26, 31, 2)},
+        "espaco_apos": {"titulo": 2, "modalidade": 2, "quando": 3, "objeto": 3, "equipe": 0},
+    },
+]
 
 _medidor = ImageDraw.Draw(Image.new("RGB", (1, 1)))
 
@@ -126,85 +153,163 @@ def conteudo(lic):
     }
 
 
-def _linhas_do_cartao(bloco):
+def _largura_texto(layout):
+    return LARGURA - 2 * MARGEM - 2 * layout["padding"] - BARRA
+
+
+def _modalidade_ao_lado(bloco, layout):
+    """No layout compacto a modalidade vai à direita do edital, se couber na linha."""
+    if not layout["modalidade_ao_lado"]:
+        return False
+    est = layout["estilos"]
+    largura = (_medidor.textlength(bloco["titulo"], font=_fonte(*est["titulo"][:2]))
+               + _medidor.textlength(bloco["modalidade"], font=_fonte(*est["modalidade"][:2])))
+    return largura + 24 <= _largura_texto(layout)
+
+
+def _linhas_do_cartao(bloco, layout):
     """[(estilo, linhas)] na ordem de desenho."""
+    est, largura = layout["estilos"], _largura_texto(layout)
     partes = []
-    for chave in ("titulo", "modalidade", "quando", "objeto"):
-        peso, tamanho, _, maximo = ESTILOS[chave]
-        texto = bloco[chave] if chave != "objeto" else f"Objeto: {bloco['objeto']}"
-        partes.append((chave, _quebrar(texto, _fonte(peso, tamanho), LARGURA_TEXTO, maximo)))
-    peso, tamanho, _, maximo = ESTILOS["equipe"]
-    for linha in bloco["equipe"]:
-        partes.append(("equipe", _quebrar(linha, _fonte(peso, tamanho), LARGURA_TEXTO, maximo)))
+
+    def adicionar(chave, texto):
+        peso, tamanho, _, maximo = est[chave]
+        partes.append((chave, _quebrar(texto, _fonte(peso, tamanho), largura, maximo)))
+
+    adicionar("titulo", bloco["titulo"])
+    if not _modalidade_ao_lado(bloco, layout):
+        adicionar("modalidade", bloco["modalidade"])
+    adicionar("quando", bloco["quando"])
+    adicionar("objeto", f"Objeto: {bloco['objeto']}")
+    if layout["equipe_unida"]:
+        adicionar("equipe", " · ".join(bloco["equipe"]))
+    else:
+        for linha in bloco["equipe"]:
+            adicionar("equipe", linha)
     return partes
 
 
-def _altura(bloco):
-    return 2 * PADDING + sum(ESTILOS[c][2] * len(l) + ESPACO_APOS[c]
-                             for c, l in _linhas_do_cartao(bloco))
+def _altura(bloco, layout):
+    return 2 * layout["padding"] + sum(
+        layout["estilos"][c][2] * len(l) + layout["espaco_apos"][c]
+        for c, l in _linhas_do_cartao(bloco, layout))
 
 
-def paginar(blocos):
-    """Distribui os cartões em quantas imagens forem necessárias."""
-    disponivel = ALTURA - TOPO - RODAPE - 2 * ESPACO_ENTRE_CARTOES
+def _linhas_cabecalho(titulo, orgao, layout):
+    """[(texto, peso, tamanho)] do cabeçalho; nos layouts compactos, órgão e data dividem
+    a mesma linha quando cabem."""
+    t_titulo, t_orgao, t_data = layout["cabecalho"]
+    atualizado = f"Atualizado em {datetime.now():%d/%m/%Y às %H:%M}"
+    juntos = f"{orgao} · {atualizado}"
+    if (layout["modalidade_ao_lado"]
+            and _medidor.textlength(juntos, font=_fonte("normal", t_data))
+            <= LARGURA - 2 * MARGEM):
+        return [(titulo, "negrito", t_titulo), (juntos, "normal", t_data)]
+    return [(titulo, "negrito", t_titulo), (orgao, "normal", t_orgao),
+            (atualizado, "semi", t_data)]
+
+
+def _altura_faixa(titulo, orgao, layout):
+    """Altura da faixa azul do cabeçalho, calculada pelo texto."""
+    return 36 + sum(round(t * 1.32) for _, _, t in _linhas_cabecalho(titulo, orgao, layout)) + 20
+
+
+def _encher(alturas, limite):
+    """Agrupa as alturas em páginas sem passar do limite (mantendo a ordem)."""
     paginas, atual, usado = [], [], 0
-    for bloco in blocos:
-        altura = _altura(bloco)
-        if atual and usado + altura > disponivel:
+    for indice, altura in enumerate(alturas):
+        if atual and usado + altura > limite:
             paginas.append(atual)
             atual, usado = [], 0
-        atual.append(bloco)
-        usado += altura + ESPACO_ENTRE_CARTOES
+        atual.append(indice)
+        usado += altura
     paginas.append(atual)
     return paginas
 
 
-def desenhar(blocos, pagina, total, titulo, orgao):
+def _distribuir(blocos, layout, titulo, orgao):
+    topo = _altura_faixa(titulo, orgao, layout) + layout["espaco"] + 10
+    disponivel = ALTURA - topo - RODAPE
+    alturas = [_altura(b, layout) + layout["espaco"] for b in blocos]
+    paginas = _encher(alturas, disponivel)
+    if len(paginas) > 1:
+        # Equilibra entre as imagens (ex.: 5 + 4 em vez de 8 + 1), sem criar outras.
+        alvo = sum(alturas) / len(paginas)
+        for limite in range(int(alvo), disponivel + 1, 20):
+            equilibradas = _encher(alturas, limite)
+            if len(equilibradas) == len(paginas):
+                paginas = equilibradas
+                break
+    return [[blocos[i] for i in pagina] for pagina in paginas]
+
+
+def paginar(blocos, titulo, orgao):
+    """Escolhe o layout que põe todas as licitações numa só imagem, mantendo a
+    legibilidade; se não houver, usa o compacto em quantas imagens forem necessárias.
+    Retorna (páginas, layout)."""
+    for layout in LAYOUTS:
+        paginas = _distribuir(blocos, layout, titulo, orgao)
+        if len(paginas) == 1:
+            return paginas, layout
+    return paginas, layout
+
+
+def desenhar(blocos, pagina, total, titulo, orgao, layout=LAYOUTS[0]):
     img = Image.new("RGB", (LARGURA, ALTURA), FUNDO)
     d = ImageDraw.Draw(img)
 
-    d.rectangle((0, 0, LARGURA, TOPO - 40), fill=PRIMARIA)
-    d.text((MARGEM, 58), titulo, font=_fonte("negrito", 72), fill="white")
-    d.text((MARGEM, 152), orgao, font=_fonte("normal", 36), fill="#c8d6ea")
-    d.text((MARGEM, 202), f"Atualizado em {datetime.now():%d/%m/%Y às %H:%M}",
-           font=_fonte("semi", 30), fill="white")
+    faixa = _altura_faixa(titulo, orgao, layout)
+    topo = faixa + layout["espaco"] + 10
+    d.rectangle((0, 0, LARGURA, faixa), fill=PRIMARIA)
+    y = 36
+    for indice, (texto, peso, tamanho) in enumerate(_linhas_cabecalho(titulo, orgao, layout)):
+        d.text((MARGEM, y), texto, font=_fonte(peso, tamanho),
+               fill="white" if indice != 1 or peso == "semi" else "#dbe6f5")
+        y += round(tamanho * 1.32)
     if total > 1:
         texto = f"{pagina}/{total}"
         fonte = _fonte("negrito", 40)
-        d.text((LARGURA - MARGEM - d.textlength(texto, font=fonte), 66), texto, font=fonte,
-               fill="white")
+        d.text((LARGURA - MARGEM - d.textlength(texto, font=fonte), 40), texto,
+               font=fonte, fill="white")
 
-    y = TOPO
+    y = topo
     if not blocos:
         texto = "Não há licitações abertas no momento."
         fonte = _fonte("semi", 40)
         d.text(((LARGURA - d.textlength(texto, font=fonte)) / 2, ALTURA / 2), texto,
                font=fonte, fill=SUTIL)
+    est, padding = layout["estilos"], layout["padding"]
     for bloco in blocos:
-        altura = _altura(bloco)
-        d.rounded_rectangle((MARGEM, y, LARGURA - MARGEM, y + altura), radius=22,
+        altura = _altura(bloco, layout)
+        d.rounded_rectangle((MARGEM, y, LARGURA - MARGEM, y + altura), radius=20,
                             fill=bloco["fundo"])
-        d.rounded_rectangle((MARGEM, y, MARGEM + BARRA + 10, y + altura), radius=22,
+        d.rounded_rectangle((MARGEM, y, MARGEM + BARRA + 10, y + altura), radius=20,
                             fill=bloco["destaque"])
         d.rectangle((MARGEM + BARRA, y, MARGEM + BARRA + 12, y + altura), fill=bloco["fundo"])
 
-        x, ty = MARGEM + BARRA + PADDING, y + PADDING
-        for chave, linhas in _linhas_do_cartao(bloco):
-            peso, tamanho, passo, _ = ESTILOS[chave]
+        x, ty = MARGEM + BARRA + padding, y + padding
+        if _modalidade_ao_lado(bloco, layout):
+            # Alinha a modalidade à direita, na altura do texto do edital.
+            fonte = _fonte(*est["modalidade"][:2])
+            mx = LARGURA - MARGEM - padding - d.textlength(bloco["modalidade"], font=fonte)
+            my = ty + est["titulo"][1] - est["modalidade"][1] - 2
+            d.text((mx, my), bloco["modalidade"], font=fonte, fill=bloco["destaque"])
+        for chave, linhas in _linhas_do_cartao(bloco, layout):
+            peso, tamanho, passo, _ = est[chave]
             cor = {"titulo": bloco["destaque"], "modalidade": bloco["destaque"],
                    "quando": ALERTA if bloco["alerta"] else TEXTO,
                    "objeto": TEXTO, "equipe": "#344054"}[chave]
             for linha in linhas:
                 d.text((x, ty), linha, font=_fonte(peso, tamanho), fill=cor)
                 ty += passo
-            ty += ESPACO_APOS[chave]
-        y += altura + ESPACO_ENTRE_CARTOES
+            ty += layout["espaco_apos"][chave]
+        y += altura + layout["espaco"]
 
     rodape = f"Agenda de Licitações · {orgao}"
     if total > 1:
         rodape += f" · página {pagina} de {total}"
     fonte = _fonte("normal", 26)
-    d.text(((LARGURA - d.textlength(rodape, font=fonte)) / 2, ALTURA - RODAPE + 30), rodape,
+    d.text(((LARGURA - d.textlength(rodape, font=fonte)) / 2, ALTURA - RODAPE + 22), rodape,
            font=fonte, fill=SUTIL)
 
     saida = io.BytesIO()

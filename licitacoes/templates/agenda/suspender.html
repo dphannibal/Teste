@@ -16,8 +16,17 @@
   </fieldset>
   <label data-campo="suspensa_em">Data e hora da suspensão *<input type="datetime-local" name="suspensa_em" value="{{ dados.suspensa_em or '' }}"></label>
   <label data-campo="nova_data">Nova data e hora da sessão *<input type="datetime-local" name="nova_data" value="{{ dados.nova_data or '' }}"></label>
-  <label data-tipo="remarcada_retificacao">Data da retificação do edital<input type="date" name="data_retificacao" value="{{ dados.data_retificacao or '' }}"></label>
+  <div data-tipo="remarcada_retificacao">
+    <label>Divulgação do edital retificado *<input type="date" name="data_retificacao" value="{{ dados.data_retificacao or '' }}">
+      <small>O prazo mínimo legal é contado de novo a partir desta data (art. 55, § 1º).</small></label>
+    <label class="opcao"><input type="checkbox" name="sem_novo_prazo" value="1" {% if dados.sem_novo_prazo %}checked{% endif %}> A alteração não compromete a formulação das propostas: não reabre o prazo</label>
+  </div>
   <label>Motivo<textarea name="motivo" rows="3" placeholder="Ex.: impugnação do edital, análise dos documentos de habilitação, horário encerrado">{{ dados.motivo or '' }}</textarea></label>
+  {% if pontos %}
+  <div class="aviso aviso-alerta">
+    <label class="opcao"><input type="checkbox" name="confirmar_ponto_facultativo" value="1"> Haverá expediente no ponto facultativo: manter a sessão nesta data</label>
+  </div>
+  {% endif %}
   {% if pendentes %}
   <div class="aviso aviso-alerta">
     <label class="opcao"><input type="checkbox" name="manter_impedidos" value="1"> Manter o membro impedido ({{ pendentes|map(attribute='nome')|join(', ') }}) na continuação — ou troque-o pela edição da licitação</label>
@@ -36,7 +45,7 @@
       e.hidden = !marcado || e.dataset.campo !== marcado.dataset.campo;
       e.querySelector('input').required = !e.hidden;
     });
-    document.querySelectorAll('label[data-tipo]').forEach(function (e) {
+    document.querySelectorAll('[data-tipo]').forEach(function (e) {
       e.hidden = !marcado || e.dataset.tipo !== marcado.value;
     });
   }

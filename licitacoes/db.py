@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS licitacoes (
     motivo_suspensao  TEXT,
     ocorrencia        TEXT,               -- última suspensão/remarcação (ver perfis.OCORRENCIAS)
     impedimentos_mantidos TEXT,           -- ids de afastamentos aceitos com a sessão em andamento
+    prazo_hipotese    TEXT,               -- enquadramento do prazo mínimo (perfis.PRAZOS)
+    retificado_em     TEXT,               -- republicação do edital retificado (reinicia o prazo)
     observacoes       TEXT,
     criado_por        INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
     criado_em         TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
@@ -82,7 +84,8 @@ CREATE TABLE IF NOT EXISTS modalidades (
     ativa            INTEGER NOT NULL DEFAULT 1,
     credenciamento   INTEGER NOT NULL DEFAULT 0,  -- aberta, sem sessão, vigência anual
     exige_equipe     INTEGER NOT NULL DEFAULT 1,
-    rotulo_condutor  TEXT    NOT NULL DEFAULT 'Agente de contratação'
+    rotulo_condutor  TEXT    NOT NULL DEFAULT 'Agente de contratação',
+    prazo_padrao     TEXT    NOT NULL DEFAULT 'nao_se_aplica'  -- ver perfis.PRAZOS
 );
 
 CREATE TABLE IF NOT EXISTS situacoes (
@@ -99,6 +102,29 @@ CREATE TABLE IF NOT EXISTS permissoes (
     perfil     TEXT NOT NULL,
     permissao  TEXT NOT NULL,
     PRIMARY KEY (perfil, permissao)
+);
+
+CREATE TABLE IF NOT EXISTS feriados (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome          TEXT    NOT NULL,
+    tipo          TEXT    NOT NULL,       -- feriado | ponto_facultativo
+    abrangencia   TEXT    NOT NULL,       -- nacional | estadual | municipal
+    regra         TEXT    NOT NULL,       -- fixa | pascoa | data
+    dia           INTEGER,
+    mes           INTEGER,
+    deslocamento  INTEGER,                -- dias em relação ao domingo de Páscoa
+    data          TEXT,                   -- regra "data": ocorre só nesta data
+    ativo         INTEGER NOT NULL DEFAULT 1,
+    observacao    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS feriado_transferencias (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    feriado_id  INTEGER NOT NULL REFERENCES feriados(id) ON DELETE CASCADE,
+    ano         INTEGER NOT NULL,
+    nova_data   TEXT    NOT NULL,
+    ato         TEXT,                     -- ex.: Decreto municipal nº 123/2026
+    UNIQUE (feriado_id, ano)
 );
 
 CREATE TABLE IF NOT EXISTS historico (
@@ -135,6 +161,11 @@ COLUNAS_NOVAS = {
         "membro3_id": "INTEGER REFERENCES servidores(id) ON DELETE SET NULL",
         "ocorrencia": "TEXT",
         "impedimentos_mantidos": "TEXT",
+        "prazo_hipotese": "TEXT",
+        "retificado_em": "TEXT",
+    },
+    "modalidades": {
+        "prazo_padrao": "TEXT NOT NULL DEFAULT 'nao_se_aplica'",
     },
     "usuarios": {
         "preferencias": "TEXT",
@@ -145,12 +176,12 @@ COLUNAS_NOVAS = {
 def _semear_parametros(conn):
     """Valores iniciais de modalidades, situações, permissões e nome do órgão."""
     if not conn.execute("SELECT 1 FROM modalidades LIMIT 1").fetchone():
-        for ordem, (nome, sigla, cor, cred, equipe, condutor) in enumerate(
+        for ordem, (nome, sigla, cor, cred, equipe, condutor, prazo) in enumerate(
                 perfis.MODALIDADES_PADRAO):
             conn.execute(
                 "INSERT INTO modalidades (nome, sigla, cor, ordem, credenciamento,"
-                " exige_equipe, rotulo_condutor) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (nome, sigla, cor, ordem, cred, equipe, condutor),
+                " exige_equipe, rotulo_condutor, prazo_padrao) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (nome, sigla, cor, ordem, cred, equipe, condutor, prazo),
             )
     if not conn.execute("SELECT 1 FROM situacoes LIMIT 1").fetchone():
         for ordem, (chave, nome, cor, fase, sistema) in enumerate(perfis.SITUACOES_PADRAO):
@@ -163,6 +194,10 @@ def _semear_parametros(conn):
         for perfil, permissoes in perfis.PERMISSOES_PADRAO.items():
             for permissao in permissoes:
                 conn.execute("INSERT INTO permissoes VALUES (?, ?)", (perfil, permissao))
+    if not conn.execute("SELECT 1 FROM feriados LIMIT 1").fetchone():
+        conn.executemany(
+            "INSERT INTO feriados (nome, tipo, abrangencia, regra, dia, mes, deslocamento,"
+            " observacao) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", perfis.FERIADOS_PADRAO)
     conn.execute(
         "INSERT OR IGNORE INTO configuracoes (chave, valor) VALUES ('nome_orgao', ?)",
         (current_app.config.get("NOME_ORGAO", "Secretaria"),),
@@ -183,8 +218,16 @@ def _migrar_para_parametros(conn):
             conn.execute("UPDATE licitacoes SET numero_edital = ? WHERE id = ?", (limpo, id_))
 
 
+def _migrar_para_prazos(conn):
+    """Prazo padrão das modalidades já cadastradas e nova permissão de feriados."""
+    for nome, *_, prazo in perfis.MODALIDADES_PADRAO:
+        conn.execute("UPDATE modalidades SET prazo_padrao = ? WHERE nome = ?"
+                     " AND prazo_padrao = 'nao_se_aplica'", (prazo, nome))
+    conn.execute("INSERT OR IGNORE INTO permissoes VALUES ('gestor', 'feriados')")
+
+
 # Migrações de dados, aplicadas uma única vez (controle por PRAGMA user_version).
-MIGRACOES = [_migrar_para_parametros]
+MIGRACOES = [_migrar_para_parametros, _migrar_para_prazos]
 
 
 def init_db():

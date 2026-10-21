@@ -20,6 +20,7 @@ PERMISSOES = {
     "excluir": "Excluir licitações",
     "servidores": "Cadastrar servidores",
     "afastamentos": "Registrar férias e afastamentos",
+    "feriados": "Cadastrar feriados, pontos facultativos e transferências",
     "auditoria": "Consultar a auditoria",
     "parametros": "Alterar parâmetros: nome do órgão, modalidades, siglas, cores e situações",
     "usuarios": "Gerenciar usuários",
@@ -31,23 +32,75 @@ PERFIL_TOTAL = "administrador"
 
 PERMISSOES_PADRAO = {
     "gestor": {"ver", "criar", "editar", "suspender", "excluir", "servidores", "afastamentos",
-               "auditoria", "parametros"},
+               "feriados", "auditoria", "parametros"},
     "pregoeiro": {"ver", "criar", "editar", "suspender"},
     "consulta": {"ver"},
 }
 
-# (nome, sigla, cor, aberta com vigência anual, exige equipe, quem conduz)
+# Prazo mínimo entre a divulgação do edital e a sessão, em dias úteis (art. 55 da
+# Lei 14.133/2021; dispensa: art. 75, § 3º; diálogo competitivo: art. 32, § 1º, I).
+PRAZOS = {
+    "bens_menor_preco": ("Bens — menor preço ou maior desconto (art. 55, I, a)", 8),
+    "bens_demais": ("Bens — demais critérios (art. 55, I, b)", 15),
+    "servicos_comuns": ("Serviços comuns, obras e serviços comuns de engenharia — menor preço "
+                        "ou maior desconto (art. 55, II, a)", 10),
+    "servicos_especiais": ("Serviços especiais, obras e serviços especiais de engenharia — "
+                           "menor preço ou maior desconto (art. 55, II, b)", 25),
+    "integrada": ("Obras e serviços — contratação integrada (art. 55, II, c)", 60),
+    "semi_integrada": ("Obras e serviços — contratação semi-integrada ou demais hipóteses "
+                       "(art. 55, II, d)", 35),
+    "maior_lance": ("Maior lance — leilão (art. 55, III)", 15),
+    "tecnica": ("Técnica e preço, melhor técnica ou conteúdo artístico (art. 55, IV)", 35),
+    "dispensa": ("Dispensa eletrônica — divulgação do aviso (art. 75, § 3º)", 3),
+    "dialogo": ("Diálogo competitivo — manifestação de interesse (art. 32, § 1º, I)", 25),
+    "nao_se_aplica": ("Não se aplica (sem prazo mínimo)", 0),
+}
+
+# (nome, sigla, cor, aberta com vigência anual, exige equipe, quem conduz, prazo padrão)
 MODALIDADES_PADRAO = [
-    ("Pregão Eletrônico", "PE", "#1e7b3c", 0, 1, "Pregoeiro(a)"),
-    ("Pregão Presencial", "PP", "#b42318", 0, 1, "Pregoeiro(a)"),
-    ("Concorrência Eletrônica", "CE", "#1d4f91", 0, 1, "Agente de contratação"),
-    ("Concorrência Presencial", "CP", "#b35a00", 0, 1, "Agente de contratação"),
-    ("Concurso", "CS", "#6a3fb5", 0, 1, "Agente de contratação"),
-    ("Leilão", "LE", "#8a6d00", 0, 1, "Agente de contratação"),
-    ("Diálogo Competitivo", "DC", "#0f7676", 0, 1, "Agente de contratação"),
-    ("Dispensa Eletrônica", "DE", "#7a5230", 0, 1, "Agente de contratação"),
-    ("Inexigibilidade", "IN", "#4b5563", 0, 0, "Agente de contratação"),
-    ("Credenciamento", "CR", "#a3266b", 1, 1, "Agente de contratação"),
+    ("Pregão Eletrônico", "PE", "#1e7b3c", 0, 1, "Pregoeiro(a)", "bens_menor_preco"),
+    ("Pregão Presencial", "PP", "#b42318", 0, 1, "Pregoeiro(a)", "bens_menor_preco"),
+    ("Concorrência Eletrônica", "CE", "#1d4f91", 0, 1, "Agente de contratação",
+     "servicos_comuns"),
+    ("Concorrência Presencial", "CP", "#b35a00", 0, 1, "Agente de contratação",
+     "servicos_comuns"),
+    ("Concurso", "CS", "#6a3fb5", 0, 1, "Agente de contratação", "tecnica"),
+    ("Leilão", "LE", "#8a6d00", 0, 1, "Agente de contratação", "maior_lance"),
+    ("Diálogo Competitivo", "DC", "#0f7676", 0, 1, "Agente de contratação", "dialogo"),
+    ("Dispensa Eletrônica", "DE", "#7a5230", 0, 1, "Agente de contratação", "dispensa"),
+    ("Inexigibilidade", "IN", "#4b5563", 0, 0, "Agente de contratação", "nao_se_aplica"),
+    ("Credenciamento", "CR", "#a3266b", 1, 1, "Agente de contratação", "nao_se_aplica"),
+]
+
+# (nome, tipo, abrangência, regra, dia, mês, deslocamento da Páscoa, observação)
+FERIADOS_PADRAO = [
+    ("Confraternização Universal", "feriado", "nacional", "fixa", 1, 1, None, "Lei 662/1949"),
+    ("Carnaval (segunda-feira)", "ponto_facultativo", "nacional", "pascoa", None, None, -48,
+     "Ponto facultativo federal"),
+    ("Carnaval (terça-feira)", "ponto_facultativo", "nacional", "pascoa", None, None, -47,
+     "Ponto facultativo federal; confira se há lei ou decreto estadual/municipal"),
+    ("Quarta-feira de Cinzas", "ponto_facultativo", "nacional", "pascoa", None, None, -46,
+     "Ponto facultativo até as 14h"),
+    ("Paixão de Cristo (Sexta-feira Santa)", "feriado", "nacional", "pascoa", None, None, -2,
+     "Lei 9.093/1995"),
+    ("Tiradentes", "feriado", "nacional", "fixa", 21, 4, None, "Lei 662/1949"),
+    ("São Jorge", "feriado", "estadual", "fixa", 23, 4, None, "Lei estadual 5.198/2008"),
+    ("Dia do Trabalho", "feriado", "nacional", "fixa", 1, 5, None, "Lei 662/1949"),
+    ("Corpus Christi", "ponto_facultativo", "nacional", "pascoa", None, None, 60,
+     "Ponto facultativo federal"),
+    ("Independência do Brasil", "feriado", "nacional", "fixa", 7, 9, None, "Lei 662/1949"),
+    ("Nossa Senhora Aparecida", "feriado", "nacional", "fixa", 12, 10, None, "Lei 6.802/1980"),
+    ("Dia do Servidor Público", "ponto_facultativo", "nacional", "fixa", 28, 10, None,
+     "Costuma ser transferido por decreto; confira a cada ano"),
+    ("Finados", "feriado", "nacional", "fixa", 2, 11, None, "Lei 662/1949"),
+    ("Proclamação da República", "feriado", "nacional", "fixa", 15, 11, None, "Lei 662/1949"),
+    ("Dia Nacional de Zumbi e da Consciência Negra", "feriado", "nacional", "fixa", 20, 11,
+     None, "Lei 14.759/2023 (no RJ, feriado estadual desde a Lei 4.007/2002)"),
+    ("Natal", "feriado", "nacional", "fixa", 25, 12, None, "Lei 662/1949"),
+    ("São Sebastião, padroeiro de Três Rios", "feriado", "municipal", "fixa", 20, 1, None,
+     "Feriado municipal de Três Rios"),
+    ("Emancipação de Três Rios", "feriado", "municipal", "fixa", 26, 12, None,
+     "Feriado municipal de Três Rios"),
 ]
 
 # Fase -> descrição. O comportamento do sistema depende da fase, não do nome da situação.

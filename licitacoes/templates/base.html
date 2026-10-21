@@ -19,7 +19,7 @@
     <a href="{{ url_for('agenda.whatsapp') }}">WhatsApp</a>
     {% if pode('servidores') or pode('afastamentos') %}<a href="{{ url_for('admin.servidores') }}">Servidores</a>{% endif %}
     {% if pode('usuarios') %}<a href="{{ url_for('admin.usuarios') }}">Usuários</a>{% endif %}
-    {% if pode('parametros') %}<a href="{{ url_for('config.parametros') }}">Configurações</a>{% endif %}
+    {% if pode('parametros') %}<a href="{{ url_for('config.parametros') }}">Configurações</a>{% elif pode('feriados') %}<a href="{{ url_for('config.feriados') }}">Feriados</a>{% endif %}
     {% if pode('auditoria') %}<a href="{{ url_for('admin.auditoria') }}">Auditoria</a>{% endif %}
     {% endif %}
   </nav>

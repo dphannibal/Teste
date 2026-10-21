@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block titulo %}Feriados {{ ano }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Feriados e pontos facultativos — {{ ano }}</h1>
+  <div class="acoes">
+    <a class="botao" href="{{ url_for('config.feriados', ano=ano - 1) }}">&larr; {{ ano - 1 }}</a>
+    <a class="botao" href="{{ url_for('config.feriados', ano=ano + 1) }}">{{ ano + 1 }} &rarr;</a>
+    <a class="botao primario" href="{{ url_for('config.feriado') }}">+ Feriado ou ponto facultativo</a>
+  </div>
+</div>
+<p class="sutil">Nestes dias, assim como sábados e domingos, não pode haver sessão, e eles não contam como dias úteis no prazo mínimo legal.
+Para mudar a data de um feriado num ano (ex.: decreto municipal de Três Rios que antecipa o feriado), use “Transferir”.</p>
+<div class="tabela-rolagem">
+<table>
+  <thead><tr><th>Data em {{ ano }}</th><th>Nome</th><th>Tipo</th><th>Abrangência</th><th>Observação</th><th></th></tr></thead>
+  <tbody>
+  {% for item in lista %}
+    {% set f = item.f %}
+    <tr class="{% if not f.ativo or not item.efetiva %}inativo{% endif %}">
+      <td class="nowrap">
+        {% if item.efetiva %}<strong>{{ item.efetiva.strftime('%d/%m/%Y') }}</strong> <small>{{ dias_semana[item.efetiva.weekday()] }}</small>
+          {% if item.transf %}<br><small class="atraso">transferido de {{ item.original.strftime('%d/%m') }}{% if item.transf.ato %} — {{ item.transf.ato }}{% endif %}</small>{% endif %}
+        {% else %}<span class="sutil">não ocorre</span>{% endif %}
+      </td>
+      <td>{{ f.nome }}{% if not f.ativo %} <small>(inativo)</small>{% endif %}</td>
+      <td><span class="selo {{ 'selo-vermelho' if f.tipo == 'feriado' else 'selo-laranja' }}">{{ tipos[f.tipo] }}</span></td>
+      <td>{{ abrangencias[f.abrangencia] }}</td>
+      <td><small>{{ f.observacao or '' }}</small></td>
+      <td class="acoes">
+        <a href="{{ url_for('config.feriado', id_=f.id) }}">Editar</a>
+        {% if item.original %}<a href="{{ url_for('config.transferir_feriado', id_=f.id, ano=ano) }}">Transferir</a>{% endif %}
+        <form method="post" action="{{ url_for('config.excluir_feriado', id_=f.id) }}" onsubmit="return confirm('Excluir {{ f.nome }} de todos os anos?');">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="ano" value="{{ ano }}">
+          <button class="link">Excluir</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

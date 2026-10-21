@@ -12,7 +12,7 @@
     <label>Modalidade *
       <select name="modalidade" id="modalidade" required>
         <option value="">Selecione…</option>
-        {% for m in modalidades %}<option value="{{ m.nome }}" data-sigla="{{ m.sigla }}" data-credenciamento="{{ m.credenciamento }}" {% if dados.modalidade == m.nome %}selected{% endif %}>{{ m.nome }} ({{ m.sigla }})</option>{% endfor %}
+        {% for m in modalidades %}<option value="{{ m.nome }}" data-sigla="{{ m.sigla }}" data-prazo="{{ m.prazo_padrao }}" data-credenciamento="{{ m.credenciamento }}" {% if dados.modalidade == m.nome %}selected{% endif %}>{{ m.nome }} ({{ m.sigla }})</option>{% endfor %}
       </select>
     </label>
     <label>Situação *
@@ -21,8 +21,16 @@
       </select>
       {% if atual and fase_de(atual.status) in ['publicada', 'remarcada', 'suspensa', 'andamento'] %}<small>Suspensão e remarcação: botão “Suspender / remarcar” na tela da licitação.</small>{% endif %}
     </label>
-    <label>Publicação do edital<input type="date" name="data_publicacao" value="{{ dados.data_publicacao or '' }}"></label>
-    <label class="so-sessao">Data e hora da sessão<input type="datetime-local" name="data_sessao" id="data_sessao" value="{{ dados.data_sessao or '' }}"></label>
+    <label>Publicação do edital<input type="date" name="data_publicacao" id="data_publicacao" value="{{ dados.data_publicacao or '' }}">
+      {% if atual and atual.retificado_em %}<small>Edital retificado em {{ atual.retificado_em|data(false) }}: o prazo conta dessa data.</small>{% endif %}</label>
+    <label class="so-sessao">Data e hora da sessão<input type="datetime-local" name="data_sessao" id="data_sessao" value="{{ dados.data_sessao or '' }}">
+      <small id="aviso-data" class="atraso" hidden></small>
+      <small id="data-minima"></small></label>
+    <label class="so-sessao">Prazo mínimo legal
+      <select name="prazo_hipotese" id="prazo">
+        <option value="">Padrão da modalidade</option>
+        {% for k, p in prazos.items() %}<option value="{{ k }}" data-dias="{{ p[1] }}" {% if dados.prazo_hipotese == k %}selected{% endif %}>{{ p[0] }} — {{ p[1] }} dias úteis</option>{% endfor %}
+      </select></label>
     <label class="so-credenciamento">Vigência até
       <input type="date" name="vigencia_ate" value="{{ dados.vigencia_ate or '' }}">
       <small>Em branco: 1 ano após a publicação. Renove a cada ano pela tela da licitação.</small>
@@ -57,6 +65,12 @@
     {% endif %}
   </fieldset>
 
+  {% if pontos %}
+  <div class="aviso aviso-alerta">
+    <label class="opcao"><input type="checkbox" name="confirmar_ponto_facultativo" value="1"> Haverá expediente no ponto facultativo: manter a sessão nesta data</label>
+  </div>
+  {% endif %}
+
   <label>Objeto *<textarea name="objeto" rows="3" required>{{ dados.objeto or '' }}</textarea></label>
   <label>Observações<textarea name="observacoes" rows="3">{{ dados.observacoes or '' }}</textarea></label>
   <div class="acoes">
@@ -70,6 +84,36 @@
   var FASES_CRED = {{ fases_credenciamento|list|tojson }};
   var modalidade = document.getElementById('modalidade'), status = document.getElementById('status');
   var membros = document.querySelectorAll('select.membro'), sessao = document.getElementById('data_sessao');
+  var NAO_UTEIS = {{ nao_uteis|tojson }}, prazo = document.getElementById('prazo');
+  var publicacao = document.getElementById('data_publicacao');
+  var DIVULGACAO_RETIFICADA = {{ (atual.retificado_em if atual else none)|tojson }};
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  function maisUm(d) { var n = new Date(d); n.setUTCDate(n.getUTCDate() + 1); return n; }
+  function util(d) { return !(iso(d) in NAO_UTEIS); }
+  // Mesma regra do servidor: N dias úteis completos a partir do dia útil seguinte à
+  // divulgação; a sessão pode ocorrer no dia útil seguinte ao último dia do prazo.
+  function dataMinima(divulgacao, dias) {
+    var d = new Date(divulgacao + 'T00:00:00Z'), contados = 0;
+    while (contados < dias) { d = maisUm(d); if (util(d)) contados++; }
+    d = maisUm(d);
+    while (!util(d)) d = maisUm(d);
+    return d;
+  }
+  function conferirData() {
+    var opcao = modalidade.selectedOptions[0], cred = !!opcao && opcao.dataset.credenciamento === '1';
+    var escolhido = prazo.value || (opcao ? opcao.dataset.prazo : '');
+    var item = Array.prototype.find.call(prazo.options, function (o) { return o.value === escolhido; });
+    var dias = item ? parseInt(item.dataset.dias || '0', 10) : 0;
+    var divulgacao = DIVULGACAO_RETIFICADA || publicacao.value, minima = document.getElementById('data-minima');
+    minima.textContent = '';
+    if (!cred && dias && divulgacao) {
+      var m = dataMinima(divulgacao, dias);
+      minima.textContent = 'Prazo de ' + dias + ' dias úteis: sessão a partir de ' + br(iso(m)) + '.';
+    }
+    var aviso = document.getElementById('aviso-data'), dia = sessao.value.slice(0, 10);
+    aviso.hidden = cred || !dia || !(dia in NAO_UTEIS);
+    if (!aviso.hidden) aviso.textContent = br(dia) + ': ' + NAO_UTEIS[dia] + '.';
+  }
   function ajustarModalidade() {
     var opcao = modalidade.selectedOptions[0];
     var cred = !!opcao && opcao.dataset.credenciamento === '1';
@@ -111,12 +155,14 @@
     alerta.textContent = 'Impedido na data da sessão: ' + avisos.join('; ') + '.';
   }
   modalidade.addEventListener('change', ajustarModalidade);
+  modalidade.addEventListener('change', conferirData);
+  [sessao, prazo, publicacao].forEach(function (e) { e.addEventListener('change', conferirData); });
   sessao.addEventListener('change', conferirAfastamentos);
   membros.forEach(function (s) {
     s.addEventListener('change', conferirEquipe);
     s.addEventListener('change', conferirAfastamentos);
   });
-  ajustarModalidade(); conferirEquipe();
+  ajustarModalidade(); conferirEquipe(); conferirData();
 })();
 </script>
 {% endblock %}

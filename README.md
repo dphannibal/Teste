@@ -41,7 +41,9 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
   Todas exigem data e hora e ficam no histórico.
 - **WhatsApp em imagem**: gera imagens no formato de tela de celular (1080 × 1920) com as
   licitações abertas ou em andamento — número do edital, modalidade, data e horário,
-  objeto e equipe —, nas cores da modalidade. Listas longas viram várias imagens. Também
+  objeto e equipe —, nas cores da modalidade. O sistema escolhe o layout mais compacto que
+  ainda mantém a leitura (nenhum texto abaixo de 26 px) para caber o maior número de
+  licitações numa só imagem; se não couberem, divide em imagens equilibradas. Também
   há imagem individual por licitação e, se preferir, o mesmo conteúdo em texto.
 - **Busca e filtros** por texto, modalidade, situação, responsável e período.
 - **Exportação .ics** da agenda (filtrada) para Outlook, Google Agenda, Thunderbird etc.
@@ -67,6 +69,29 @@ dos perfis** (o Administrador sempre tem tudo). Padrão inicial:
 | Consultar auditoria                         | ✔ | ✔ |   |   |
 | Alterar parâmetros (órgão, modalidades, situações) | ✔ | ✔ |   |   |
 | Gerenciar usuários                          | ✔ |   |   |   |
+
+## Feriados, pontos facultativos e prazo mínimo legal
+
+- Já vêm cadastrados os feriados **nacionais**, o **estadual do RJ** (São Jorge, 23/04 — Lei
+  estadual 5.198/2008) e os **municipais de Três Rios** (São Sebastião, 20/01, e Emancipação,
+  26/12), além dos pontos facultativos usuais (Carnaval, Quarta de Cinzas, Corpus Christi,
+  Dia do Servidor). Confira a lista com a legislação local e ajuste em **Configurações →
+  Feriados e pontos facultativos**.
+- É possível cadastrar feriados ou pontos facultativos (fixos, móveis pela Páscoa ou numa data
+  específica) e **transferir a data** de um feriado num ano (ex.: decreto municipal que
+  antecipa o feriado), registrando o ato. Ao cadastrar ou transferir, o sistema avisa se já
+  há sessão marcada no dia.
+- A data da sessão (no cadastro, na edição e nas remarcações) **não pode cair em sábado,
+  domingo ou feriado**; em ponto facultativo, só com a confirmação de que haverá expediente.
+- **Prazo mínimo legal** (art. 55 da Lei 14.133/2021; dispensa: art. 75, § 3º; diálogo
+  competitivo: art. 32, § 1º, I): cada licitação tem o enquadramento do prazo (sugerido pela
+  modalidade). A contagem começa no dia útil seguinte à divulgação do edital (art. 183,
+  § 1º, I), considera apenas dias úteis (sem fins de semana, feriados e pontos facultativos)
+  e garante os dias completos — a sessão pode ocorrer no dia útil seguinte ao último dia do
+  prazo. O formulário mostra a data mínima enquanto se preenche.
+- **Remarcação após retificação do edital**: o prazo é contado de novo a partir da divulgação
+  do edital retificado (art. 55, § 1º), salvo quando se marca que a alteração não compromete
+  a formulação das propostas.
 
 ## Parâmetros (Configurações)
 
@@ -146,6 +171,7 @@ licitacoes/
   admin.py               usuários, servidores, afastamentos e auditoria
   parametros.py          leitura dos parâmetros (modalidades, situações, permissões)
   config.py              telas de configuração (permissões e parâmetros)
+  feriados.py            feriados, dias úteis e prazo mínimo legal
   equipe.py              regras da equipe (efetivos, férias e afastamentos)
   imagem.py              imagem para WhatsApp (fonte Inter em static/fontes, licença OFL)
   db.py                  esquema e acesso ao SQLite

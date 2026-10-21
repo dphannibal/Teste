@@ -7,6 +7,8 @@ from werkzeug.security import generate_password_hash
 
 from licitacoes import create_app, garantir_admin_inicial
 from licitacoes.db import get_db
+from licitacoes.feriados import pascoa
+from licitacoes.perfis import FERIADOS_PADRAO
 
 SENHA = "senha-segura-1"
 
@@ -51,8 +53,24 @@ def post(client, url, dados, pagina=None):
     return client.post(url, data=dados)
 
 
-# Sessão sempre no futuro, para os testes não dependerem da data em que rodam.
-SESSAO = date.today() + timedelta(days=15)
+def dia_util(dia):
+    """Primeiro dia sem fim de semana nem feriado/ponto facultativo padrão a partir de ``dia``."""
+    def nao_util(d):
+        if d.weekday() >= 5:
+            return True
+        for _, _, _, regra, dia_, mes, desloc, _ in FERIADOS_PADRAO:
+            if regra == "fixa" and (d.month, d.day) == (mes, dia_):
+                return True
+            if regra == "pascoa" and d == pascoa(d.year) + timedelta(days=desloc):
+                return True
+        return False
+    while nao_util(dia):
+        dia += timedelta(days=1)
+    return dia
+
+
+# Sessão sempre no futuro e em dia útil, para os testes não dependerem da data em que rodam.
+SESSAO = dia_util(date.today() + timedelta(days=15))
 SESSAO_ISO = f"{SESSAO.isoformat()}T09:30"
 SESSAO_BR = f"{SESSAO:%d/%m/%Y} 09:30"
 
@@ -430,7 +448,7 @@ def test_whatsapp_gera_imagem_de_celular(client):
 
 def test_painel_mostra_sessoes_alem_de_30_dias(client):
     entrar(client, "pregoeiro")
-    longe = (date.today() + timedelta(days=200)).isoformat() + "T09:00"
+    longe = dia_util(date.today() + timedelta(days=200)).isoformat() + "T09:00"
     post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital="999/2027",
                                           data_sessao=longe), "/licitacoes/nova")
     assert "PE 999/2027" in client.get("/").get_data(as_text=True)
@@ -498,7 +516,8 @@ def test_gestor_altera_parametros(client):
     # Modalidade: nova sigla, novo nome e nova cor valem para as licitações existentes.
     post(client, "/admin/modalidades/1/editar",
          {"nome": "Pregão Eletrônico SRP", "sigla": "pes", "cor": "#123456", "ordem": "0",
-          "ativa": "1", "exige_equipe": "1", "rotulo_condutor": "Pregoeiro(a)"},
+          "ativa": "1", "exige_equipe": "1", "rotulo_condutor": "Pregoeiro(a)",
+          "prazo_padrao": "bens_menor_preco"},
          "/admin/modalidades/1/editar")
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
     assert "PES 010/2026" in pagina and "Pregão Eletrônico SRP" in pagina
@@ -562,6 +581,121 @@ def test_ordenacao_e_colunas_do_painel(client):
     assert tabela.index(">Situação") < tabela.index(">Edital") < tabela.index(">Data e hora")
     assert ">Objeto" not in tabela.split("</thead>")[0]
     assert html.index("PE 010/2025") < html.index("PE 001/2026") < html.index("PE 002/2026")
+
+
+def test_feriado_e_fim_de_semana_impedem_a_sessao(client):
+    entrar(client, "pregoeiro")
+    for data_sessao, esperado in (("2026-12-25T09:00", "Natal"),
+                                  ("2026-11-21T09:00", "sábado"),
+                                  ("2027-01-20T09:00", "São Sebastião, padroeiro de Três Rios"),
+                                  ("2027-04-23T09:00", "São Jorge")):
+        html = post(client, "/licitacoes/nova", dict(LICITACAO, data_sessao=data_sessao),
+                    "/licitacoes/nova").get_data(as_text=True)
+        assert esperado in html, data_sessao
+
+    # Ponto facultativo (Corpus Christi 2027): só com confirmação de expediente.
+    dados = dict(LICITACAO, data_sessao="2027-05-27T09:00")
+    html = post(client, "/licitacoes/nova", dados, "/licitacoes/nova").get_data(as_text=True)
+    assert "Corpus Christi" in html and 'name="confirmar_ponto_facultativo"' in html
+    resp = post(client, "/licitacoes/nova", dict(dados, confirmar_ponto_facultativo="1"),
+                "/licitacoes/nova")
+    assert resp.status_code == 302
+
+
+def test_transferencia_de_feriado_municipal(client):
+    entrar(client, "pregoeiro")
+    assert client.get("/admin/feriados").status_code == 403
+    sair(client)
+    entrar(client, "gestor")
+    id_ = criar_licitacao(client)
+    with client.application.app_context():
+        feriado = get_db().execute("SELECT id FROM feriados WHERE nome LIKE 'São Sebastião%'"
+                                   ).fetchone()[0]
+    # Decreto antecipa o padroeiro de 20/01/2027 (quarta) para 18/01/2027 (segunda).
+    url = f"/admin/feriados/{feriado}/transferir?ano=2027"
+    post(client, url, {"ano": "2027", "nova_data": "2027-01-18",
+                       "ato": "Decreto municipal nº 1/2027"}, url)
+    assert "transferido de 20/01" in client.get("/admin/feriados?ano=2027").get_data(
+        as_text=True)
+
+    editar = f"/licitacoes/{id_}/editar"
+    html = post(client, editar, dict(LICITACAO, data_sessao="2027-01-18T09:00"),
+                editar).get_data(as_text=True)
+    assert "transferido de 20/01" in html
+    assert post(client, editar, dict(LICITACAO, data_sessao="2027-01-20T09:00"),
+                editar).status_code == 302
+    assert "Transferência de feriado" in client.get("/admin/auditoria").get_data(as_text=True)
+
+
+def test_ponto_facultativo_cadastrado_avisa_sessoes_marcadas(client):
+    entrar(client, "gestor")
+    criar_licitacao(client)
+    resp = post(client, "/admin/feriados/novo",
+                {"nome": "Ponto facultativo decretado", "tipo": "ponto_facultativo",
+                 "abrangencia": "municipal", "regra": "data", "data": SESSAO.isoformat()},
+                "/admin/feriados/novo")
+    html = client.get(resp.headers["Location"]).get_data(as_text=True)
+    assert "há sessão marcada" in html and "PE 010/2026" in html
+    assert "Ponto facultativo decretado" in client.get(
+        f"/calendario?ano={SESSAO.year}&mes={SESSAO.month}").get_data(as_text=True)
+
+
+def test_prazo_minimo_legal_de_nova_licitacao(client):
+    entrar(client, "pregoeiro")
+    # Pregão de bens por menor preço: 8 dias úteis. Divulgado na segunda 01/03/2027,
+    # o prazo corre de 02/03 a 11/03; a sessão pode ser a partir de 12/03.
+    base = dict(LICITACAO, data_publicacao="2027-03-01")
+    html = post(client, "/licitacoes/nova", dict(base, data_sessao="2027-03-11T09:00"),
+                "/licitacoes/nova").get_data(as_text=True)
+    assert "Prazo mínimo legal não respeitado" in html and "a partir de 12/03/2027" in html
+    resp = post(client, "/licitacoes/nova", dict(base, data_sessao="2027-03-12T09:00"),
+                "/licitacoes/nova")
+    assert resp.status_code == 302
+    pagina = client.get(resp.headers["Location"]).get_data(as_text=True)
+    assert "8 dias úteis" in pagina and "a partir de 12/03/2027" in pagina
+
+    # Serviços especiais: 25 dias úteis.
+    html = post(client, "/licitacoes/nova",
+                dict(base, data_sessao="2027-03-12T09:00", prazo_hipotese="servicos_especiais"),
+                "/licitacoes/nova").get_data(as_text=True)
+    assert "exige 25 dias úteis" in html
+    html = post(client, "/licitacoes/nova", dict(base, data_publicacao=""),
+                "/licitacoes/nova").get_data(as_text=True)
+    assert "Informe a data de publicação do edital" in html
+
+
+def test_remarcacao_por_retificacao_reabre_o_prazo(client):
+    entrar(client, "pregoeiro")
+    id_ = criar_licitacao(client)
+    url = f"/licitacoes/{id_}/suspender"
+    base = {"tipo": "remarcada_retificacao", "data_retificacao": "2030-04-01"}
+    # Retificado em 01/04/2030 (segunda): 8 dias úteis vão até 11/04; sessão a partir de 12/04.
+    html = post(client, url, dict(base, nova_data="2030-04-10T10:00"), url).get_data(as_text=True)
+    assert "a partir de 12/04/2030" in html
+    html = post(client, url, {"tipo": "remarcada_retificacao", "nova_data": "2030-04-10T10:00"},
+                url).get_data(as_text=True)
+    assert "divulgação do edital retificado" in html
+    html = post(client, url, dict(base, nova_data="2030-04-19T10:00"), url).get_data(as_text=True)
+    assert "Paixão de Cristo" in html
+
+    # Se a alteração não afeta as propostas, o prazo não reabre.
+    post(client, url, {"tipo": "remarcada_retificacao", "nova_data": "2030-04-10T10:00",
+                       "sem_novo_prazo": "1"}, url)
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "10/04/2030 10:00" in pagina and "Sem reabertura de prazo" in pagina
+
+    post(client, url, dict(base, nova_data="2030-04-12T10:00"), url)
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "12/04/2030 10:00" in pagina and "contado da retificação em 01/04/2030" in pagina
+
+
+def test_imagem_encaixa_mais_licitacoes(client):
+    entrar(client, "pregoeiro")
+    for n in range(6):
+        post(client, "/licitacoes/nova", dict(LICITACAO, numero_edital=f"{n:03d}/2026"),
+             "/licitacoes/nova")
+    html = client.get("/licitacoes/whatsapp").get_data(as_text=True)
+    assert "/licitacoes/whatsapp/1.png" in html and "/licitacoes/whatsapp/2.png" not in html
 
 
 def test_banco_antigo_e_convertido(tmp_path):

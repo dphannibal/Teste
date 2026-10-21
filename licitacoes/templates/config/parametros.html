@@ -3,7 +3,10 @@
 {% block conteudo %}
 <div class="cabecalho">
   <h1>Configurações</h1>
-  {% if g.usuario.perfil == 'administrador' %}<div class="acoes"><a class="botao" href="{{ url_for('config.perfis') }}">Permissões dos perfis</a></div>{% endif %}
+  <div class="acoes">
+    {% if pode('feriados') %}<a class="botao" href="{{ url_for('config.feriados') }}">Feriados e pontos facultativos</a>{% endif %}
+    {% if g.usuario.perfil == 'administrador' %}<a class="botao" href="{{ url_for('config.perfis') }}">Permissões dos perfis</a>{% endif %}
+  </div>
 </div>
 
 <section class="cartao">

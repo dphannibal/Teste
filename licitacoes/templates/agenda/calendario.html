@@ -17,8 +17,10 @@
   {% for semana in semanas %}
     <tr>
     {% for dia in semana %}
-      <td class="{% if dia.month != mes %}fora{% endif %} {% if dia == hoje %}hoje{% endif %}">
+      {% set feriados_dia = nao_uteis.get(dia.isoformat(), []) %}
+      <td class="{% if dia.month != mes %}fora{% endif %} {% if dia == hoje %}hoje{% endif %} {% if feriados_dia %}{{ 'feriado' if feriados_dia|selectattr('tipo', 'eq', 'feriado')|list else 'facultativo' }}{% elif dia.weekday() >= 5 %}fim-de-semana{% endif %}">
         <div class="numero">{{ dia.day }}</div>
+        {% for f in feriados_dia %}<div class="nome-feriado" title="{{ f.nome }}{% if f.transferido_de %} (transferido de {{ f.transferido_de.strftime('%d/%m') }}){% endif %}">{{ f.nome }}{% if f.tipo == 'ponto_facultativo' %} <em>(ponto facultativo)</em>{% endif %}</div>{% endfor %}
         {% for e in eventos.get(dia.isoformat(), []) %}
           <a class="evento modalidade" style="{{ estilo_modalidade(e.lic.modalidade) }}" href="{{ url_for('agenda.detalhe', id_=e.lic.id) }}"
              title="{{ e.lic.modalidade }} — {{ e.lic.objeto }} ({{ situacao(e.lic) }})"><span class="ponto" style="background: {{ cores_situacao(e.lic.status)[1] }};"></span>{{ e.rotulo }}</a>
@@ -31,5 +33,7 @@
 </table>
 </div>
 {{ legenda_modalidades(modalidades|map(attribute='nome')|list) }}
+<p class="legenda"><span class="chip-dia feriado">Feriado</span> <span class="chip-dia facultativo">Ponto facultativo</span> <span class="chip-dia fim-de-semana">Fim de semana</span>
+{% if pode('feriados') %}<a href="{{ url_for('config.feriados', ano=ano) }}">Gerenciar feriados</a>{% endif %}</p>
 <p class="legenda"><span class="sutil">Ponto = situação:</span> {% for s in situacoes %}{{ selo_situacao(s.chave) }} {% endfor %}</p>
 {% endblock %}

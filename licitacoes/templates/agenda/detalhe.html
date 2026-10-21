@@ -39,6 +39,7 @@
     <dt>Vigência até</dt><dd>{{ lic.vigencia_ate|data(false) if lic.vigencia_ate else '—' }} <small>(aberto a novos credenciados enquanto vigente; renovação anual)</small></dd>
     {% else %}
     <dt>Data da sessão</dt><dd>{{ lic.data_sessao|data if lic.data_sessao else 'A definir' }}</dd>
+    <dt>Prazo mínimo legal</dt><dd>{% if prazo[1] %}{{ prazo[1] }} dias úteis — {{ prazo[0] }}{% if data_minima %}<br><small>Sessão possível a partir de {{ data_minima.strftime('%d/%m/%Y') }}{% if lic.retificado_em %} (contado da retificação em {{ lic.retificado_em|data(false) }}){% endif %}</small>{% endif %}{% else %}{{ prazo[0] }}{% endif %}</dd>
     {% endif %}
     <dt>Local / plataforma</dt><dd>{{ lic.local or '—' }}</dd>
     <dt>Valor estimado</dt><dd>{{ lic.valor_estimado|moeda }}</dd>

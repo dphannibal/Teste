@@ -8,14 +8,14 @@ from flask import (
     Blueprint, Response, abort, flash, g, redirect, render_template, request, url_for,
 )
 
-from . import equipe, imagem
+from . import equipe, feriados, imagem
 from . import parametros as P
 from .auth import login_obrigatorio, permissao
 from .db import get_db, registrar
 from .perfis import (
     COLUNAS, COLUNAS_PADRAO, EQUIPE_OBRIGATORIA, FASES_ABERTAS, FASES_ANTES_DA_SESSAO,
     FASES_CREDENCIAMENTO, FASES_DA_ACAO, FASES_DIVULGAVEIS, FASES_EM_ANDAMENTO, FUNCOES_EQUIPE,
-    OCORRENCIAS, VINCULOS_EFETIVOS,
+    OCORRENCIAS, PRAZOS, VINCULOS_EFETIVOS,
 )
 
 bp = Blueprint("agenda", __name__)
@@ -27,7 +27,7 @@ EQUIPE = equipe.EQUIPE
 
 CAMPOS = ["numero_processo", "numero_edital", "modalidade", "objeto", "data_publicacao",
           "data_sessao", "vigencia_ate", "local", *EQUIPE, "valor_estimado", "status",
-          "observacoes"]
+          "prazo_hipotese", "observacoes"]
 
 ROTULOS = {
     "numero_processo": "Nº do processo",
@@ -41,6 +41,7 @@ ROTULOS = {
     **FUNCOES_EQUIPE,
     "valor_estimado": "Valor estimado",
     "status": "Situação",
+    "prazo_hipotese": "Prazo mínimo",
     "observacoes": "Observações",
 }
 
@@ -107,8 +108,32 @@ def _ler_data(texto, com_hora):
     return dt.strftime("%Y-%m-%dT%H:%M" if com_hora else "%Y-%m-%d")
 
 
+def criticar_sessao(dia_hora, divulgacao, prazo, confirmar_ponto):
+    """Crítica da data da sessão: fim de semana, feriado, ponto facultativo e prazo mínimo
+    legal contado da divulgação do edital. Retorna (erros, pontos facultativos a confirmar)."""
+    dia = date.fromisoformat(dia_hora[:10])
+    erros, pontos = feriados.criticar_data(dia)
+    if pontos and confirmar_ponto:
+        pontos = []
+    erros += [f"{p} Confirme se haverá expediente para manter a data." for p in pontos]
+    descricao, dias = PRAZOS.get(prazo, PRAZOS["nao_se_aplica"])
+    if dias:
+        if not divulgacao:
+            erros.append("Informe a data de publicação do edital para conferir o prazo mínimo "
+                         "legal.")
+        else:
+            base = date.fromisoformat(divulgacao)
+            minima = feriados.data_minima_sessao(base, dias)
+            if dia < minima:
+                erros.append(
+                    f"Prazo mínimo legal não respeitado: {descricao} exige {dias} dias úteis. "
+                    f"Com divulgação em {base:%d/%m/%Y}, a sessão pode ocorrer a partir de "
+                    f"{minima:%d/%m/%Y}.")
+    return erros, pontos
+
+
 def _validar(form, atual=None):
-    """Retorna (dados, erros, impedidos pendentes de decisão)."""
+    """Retorna (dados, erros, impedidos pendentes de decisão, pontos facultativos)."""
     dados = {c: form.get(c, "").strip() for c in CAMPOS}
     erros = []
 
@@ -169,6 +194,29 @@ def _validar(form, atual=None):
                 and dados["data_sessao"][:10] < dados["data_publicacao"]):
             erros.append("A sessão não pode ser anterior à publicação do edital.")
 
+    # Enquadramento do prazo mínimo legal (o padrão vem da modalidade).
+    if credenciamento:
+        dados["prazo_hipotese"] = "nao_se_aplica"
+    dados["prazo_hipotese"] = dados["prazo_hipotese"] or modalidade.get("prazo_padrao")
+    if dados["prazo_hipotese"] not in PRAZOS:
+        erros.append("Selecione o enquadramento do prazo mínimo legal.")
+        dados["prazo_hipotese"] = "nao_se_aplica"
+
+    # A data só é criticada quando muda (ou quando o edital é publicado), para não travar a
+    # edição de licitações antigas.
+    pontos = []
+    publicando = atual is not None and P.fase(atual["status"]) == "planejamento"
+    mudou = atual is None or publicando or any(
+        atual[c] != dados[c] for c in ("data_sessao", "data_publicacao")) or (
+        atual["prazo_hipotese"] is not None
+        and atual["prazo_hipotese"] != dados["prazo_hipotese"])
+    if dados["data_sessao"] and fase != "planejamento" and mudou:
+        divulgacao = (atual["retificado_em"] if atual else None) or dados["data_publicacao"]
+        erros_data, pontos = criticar_sessao(
+            dados["data_sessao"], divulgacao, dados["prazo_hipotese"],
+            bool(form.get("confirmar_ponto_facultativo")))
+        erros += erros_data
+
     try:
         dados["valor_estimado"] = _ler_valor(dados["valor_estimado"])
         if dados["valor_estimado"] is not None and dados["valor_estimado"] < 0:
@@ -201,7 +249,7 @@ def _validar(form, atual=None):
     for campo in ("numero_edital", "local", "observacoes"):
         dados[campo] = dados[campo] or None
 
-    return dados, erros, pendentes
+    return dados, erros, pendentes, pontos
 
 
 # --- Colunas e ordenação escolhidas por usuário ------------------------------------------
@@ -391,6 +439,10 @@ def calendario():
     inicio, fim = semanas[0][0].isoformat(), (semanas[-1][-1] + timedelta(days=1)).isoformat()
     credenciamentos = [m["nome"] for m in P.modalidades() if m["credenciamento"]] or [""]
     andamento = P.chaves("andamento")
+    nao_uteis = {}
+    for ano_ in {semanas[0][0].year, semanas[-1][-1].year}:
+        for dia, lista in feriados.ocorrencias(ano_).items():
+            nao_uteis.setdefault(dia.isoformat(), []).extend(lista)
     eventos = {}
     for lic in get_db().execute(
         CONSULTA_BASE + " WHERE (l.data_sessao >= ? AND l.data_sessao < ?)"
@@ -412,6 +464,7 @@ def calendario():
         "agenda/calendario.html",
         semanas=semanas, eventos=eventos, ano=ano, mes=mes, nome_mes=MESES[mes - 1],
         hoje=hoje, anterior=anterior, seguinte=seguinte, modalidades=P.modalidades(True),
+        nao_uteis=nao_uteis,
         situacoes=P.situacoes(True),
     )
 
@@ -429,11 +482,14 @@ def lista():
     )
 
 
-def _render_form(dados, titulo, atual=None, pendentes=()):
+def _render_form(dados, titulo, atual=None, pendentes=(), pontos=()):
     situacoes = [s for s in P.situacoes(True, atual and atual["status"])
                  if s["fase"] not in FASES_DA_ACAO or (atual and atual["status"] == s["chave"])]
     return render_template(
         "agenda/form.html", dados=dados, titulo=titulo, atual=atual, pendentes=pendentes,
+        pontos=pontos, prazos=PRAZOS,
+        nao_uteis=feriados.dias_nao_uteis(date.today() - timedelta(days=60),
+                                          date.today() + timedelta(days=730)),
         modalidades=P.modalidades(True, atual and atual["modalidade"]), situacoes=situacoes,
         servidores=equipe.servidores([dados.get(c) for c in EQUIPE]),
         fases_credenciamento=FASES_CREDENCIAMENTO, efetivos=VINCULOS_EFETIVOS,
@@ -445,9 +501,9 @@ def _render_form(dados, titulo, atual=None, pendentes=()):
 @permissao("criar")
 def nova():
     dados = {"status": P.chaves("planejamento")[0]}
-    pendentes = []
+    pendentes = pontos = []
     if request.method == "POST":
-        dados, erros, pendentes = _validar(request.form)
+        dados, erros, pendentes, pontos = _validar(request.form)
         if erros:
             for e in erros:
                 flash(e, "erro")
@@ -465,7 +521,7 @@ def nova():
             flash("Licitação cadastrada.", "sucesso")
             return redirect(url_for("agenda.detalhe", id_=cur.lastrowid))
 
-    return _render_form(dados, "Nova licitação", pendentes=pendentes)
+    return _render_form(dados, "Nova licitação", pendentes=pendentes, pontos=pontos)
 
 
 @bp.route("/licitacoes/<int:id_>")
@@ -487,8 +543,17 @@ def detalhe(id_):
         alertas += equipe.verificar(
             ids, lic["data_sessao"], fase == "andamento",
             equipe.ler_mantidos(lic["impedimentos_mantidos"]), manter=False)[0]
+    chave_prazo = lic["prazo_hipotese"] or P.modalidade(lic["modalidade"])["prazo_padrao"]
+    descricao_prazo, dias_prazo = PRAZOS.get(chave_prazo, PRAZOS["nao_se_aplica"])
+    divulgacao = lic["retificado_em"] or lic["data_publicacao"]
+    minima = (feriados.data_minima_sessao(date.fromisoformat(divulgacao), dias_prazo)
+              if divulgacao and dias_prazo else None)
+    if lic["data_sessao"] and fase in FASES_ABERTAS:
+        motivos = feriados.motivos(date.fromisoformat(lic["data_sessao"][:10]))
+        alertas += [f"A data da sessão é {feriados.descrever(m).lower()}." for m in motivos]
     return render_template(
         "agenda/detalhe.html", lic=lic, historico=historico, escalados=escalados,
+        prazo=(descricao_prazo, dias_prazo), data_minima=minima,
         alertas_equipe=alertas, credenciamento=P.eh_credenciamento(lic["modalidade"]),
         fase=fase, efetivos=VINCULOS_EFETIVOS, funcoes=FUNCOES_EQUIPE,
         pode_suspender=bool(_ocorrencias_possiveis(lic)),
@@ -500,9 +565,9 @@ def detalhe(id_):
 def editar(id_):
     lic = _buscar(id_)
     dados = dict(lic)
-    pendentes = []
+    pendentes = pontos = []
     if request.method == "POST":
-        dados, erros, pendentes = _validar(request.form, lic)
+        dados, erros, pendentes, pontos = _validar(request.form, lic)
         if erros:
             for e in erros:
                 flash(e, "erro")
@@ -532,7 +597,7 @@ def editar(id_):
                 flash("Nenhuma alteração foi feita.", "info")
             return redirect(url_for("agenda.detalhe", id_=id_))
 
-    return _render_form(dados, f"Editar {identificacao(lic)}", lic, pendentes)
+    return _render_form(dados, f"Editar {identificacao(lic)}", lic, pendentes, pontos)
 
 
 def _formatar(valor):
@@ -554,6 +619,10 @@ def _descrever_alteracoes(antes, depois):
             a, d = nomes.get(a, "—"), nomes.get(d, "—")
         elif campo == "status":
             a, d = P.situacao(a)["nome"], P.situacao(d)["nome"]
+        elif campo == "prazo_hipotese":
+            if a is None:
+                continue
+            a, d = PRAZOS.get(a, (a,))[0], PRAZOS.get(d, (d,))[0]
         elif campo in ("data_publicacao", "data_sessao", "vigencia_ate"):
             a, d = _formatar(a), _formatar(d)
         elif campo in ("objeto", "observacoes"):
@@ -589,10 +658,11 @@ def suspender(id_):
 
     agora = datetime.now().strftime("%Y-%m-%dT%H:%M")
     dados = {"tipo": next(iter(opcoes)), "suspensa_em": agora}
-    pendentes = []
+    pendentes = pontos = []
     if request.method == "POST":
         dados = {c: request.form.get(c, "").strip()
-                 for c in ("tipo", "suspensa_em", "nova_data", "data_retificacao", "motivo")}
+                 for c in ("tipo", "suspensa_em", "nova_data", "data_retificacao", "motivo",
+                           "sem_novo_prazo")}
         erros = []
         tipo = opcoes.get(dados["tipo"])
         quando = None
@@ -610,11 +680,30 @@ def suspender(id_):
                     erros.append("A nova data e hora da sessão deve ser futura.")
             except ValueError:
                 erros.append("Informe a nova data e a hora da sessão.")
-        if dados["tipo"] == "remarcada_retificacao" and dados["data_retificacao"]:
+        retificacao = dados["tipo"] == "remarcada_retificacao"
+        if retificacao and dados["data_retificacao"]:
             try:
                 dados["data_retificacao"] = _ler_data(dados["data_retificacao"], com_hora=False)
             except ValueError:
                 erros.append("Data da retificação inválida.")
+                dados["data_retificacao"] = ""
+        elif retificacao and not dados["sem_novo_prazo"]:
+            erros.append("Informe a data de divulgação do edital retificado: o prazo mínimo "
+                         "é contado de novo a partir dela (art. 55, § 1º).")
+
+        # Nova data: dia útil e, antes da abertura, prazo mínimo legal (reaberto pela
+        # retificação, salvo se ela não afetar a formulação das propostas).
+        if tipo and tipo["campo"] == "nova_data" and quando and not erros:
+            if tipo["fase"] == "antes":
+                divulgacao = lic["retificado_em"] or lic["data_publicacao"]
+                if retificacao and not dados["sem_novo_prazo"]:
+                    divulgacao = dados["data_retificacao"]
+                prazo = lic["prazo_hipotese"] or P.modalidade(lic["modalidade"])["prazo_padrao"]
+            else:
+                divulgacao, prazo = None, "nao_se_aplica"
+            erros_data, pontos = criticar_sessao(
+                quando, divulgacao, prazo, bool(request.form.get("confirmar_ponto_facultativo")))
+            erros += erros_data
 
         mantidos = equipe.ler_mantidos(lic["impedimentos_mantidos"])
         if tipo and tipo["campo"] == "nova_data" and quando and not erros:
@@ -638,6 +727,9 @@ def suspender(id_):
                 novo_status = lic["status"]
             else:
                 novo_status = "suspensa" if tipo["campo"] == "suspensa_em" else "remarcada"
+            if retificacao and not dados["sem_novo_prazo"]:
+                conn.execute("UPDATE licitacoes SET retificado_em = ? WHERE id = ?",
+                             (dados["data_retificacao"], id_))
             if tipo["campo"] == "suspensa_em":
                 conn.execute(
                     "UPDATE licitacoes SET status = ?, ocorrencia = ?, suspensa_em = ?,"
@@ -655,8 +747,11 @@ def suspender(id_):
                      ",".join(map(str, sorted(mantidos))) or None, id_),
                 )
                 detalhes = f"De {_formatar(lic['data_sessao'])} para {_formatar(quando)}"
-                if dados["tipo"] == "remarcada_retificacao" and dados["data_retificacao"]:
+                if retificacao and dados["data_retificacao"]:
                     detalhes += f". Edital retificado em {_formatar(dados['data_retificacao'])}"
+                if retificacao and dados["sem_novo_prazo"]:
+                    detalhes += (". Sem reabertura de prazo: a alteração não compromete a "
+                                 "formulação das propostas (art. 55, § 1º)")
             if mantidos - equipe.ler_mantidos(lic["impedimentos_mantidos"]):
                 detalhes += ". Mantido membro impedido"
             if motivo:
@@ -668,7 +763,7 @@ def suspender(id_):
             return redirect(url_for("agenda.detalhe", id_=id_))
 
     return render_template("agenda/suspender.html", lic=lic, dados=dados, opcoes=opcoes,
-                           pendentes=pendentes, fase=P.fase(lic["status"]))
+                           pendentes=pendentes, pontos=pontos, fase=P.fase(lic["status"]))
 
 
 @bp.route("/licitacoes/<int:id_>/renovar", methods=["POST"])
@@ -733,7 +828,8 @@ def _texto_whatsapp(licitacoes):
 
 
 def _paginas(licitacoes):
-    return imagem.paginar([imagem.conteudo(l) for l in licitacoes])
+    return imagem.paginar([imagem.conteudo(l) for l in licitacoes], "Licitações abertas",
+                          P.nome_orgao())
 
 
 @bp.route("/licitacoes/whatsapp")
@@ -741,7 +837,7 @@ def _paginas(licitacoes):
 def whatsapp():
     """Imagens no formato de tela de celular com as licitações abertas ou em andamento."""
     licitacoes = _abertas()
-    total = len(_paginas(licitacoes))
+    total = len(_paginas(licitacoes)[0])
     imagens = [url_for("agenda.whatsapp_imagem", pagina=n, v=datetime.now().strftime("%H%M%S"))
                for n in range(1, total + 1)]
     return render_template("agenda/whatsapp.html", imagens=imagens, total=len(licitacoes),
@@ -752,11 +848,11 @@ def whatsapp():
 @bp.route("/licitacoes/whatsapp/<int:pagina>.png")
 @permissao("ver")
 def whatsapp_imagem(pagina):
-    paginas = _paginas(_abertas())
+    paginas, layout = _paginas(_abertas())
     if not 1 <= pagina <= len(paginas):
         abort(404)
     png = imagem.desenhar(paginas[pagina - 1], pagina, len(paginas), "Licitações abertas",
-                          P.nome_orgao())
+                          P.nome_orgao(), layout)
     return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
 
 

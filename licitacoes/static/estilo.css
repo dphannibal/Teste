@@ -198,3 +198,11 @@ input[type=color] { padding: .2rem; height: 2.4rem; }
 /* Célula de ações: mantém o comportamento de célula (fundo da linha) */
 td.acoes { display: table-cell; white-space: nowrap; }
 td.acoes > * { display: inline-block; margin-right: .6rem; vertical-align: middle; }
+
+/* Feriados no calendário */
+.calendario td.fim-de-semana, .chip-dia.fim-de-semana { background: #f1f3f6; }
+.calendario td.feriado, .chip-dia.feriado { background: #fdecec; }
+.calendario td.facultativo, .chip-dia.facultativo { background: #fff4e5; }
+.nome-feriado { font-size: .7rem; color: var(--perigo); line-height: 1.2; margin-bottom: .2rem; }
+.facultativo .nome-feriado { color: var(--laranja-t); }
+.chip-dia { padding: .1rem .5rem; border-radius: 4px; font-size: .78rem; border: 1px solid var(--borda); }
