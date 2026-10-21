@@ -133,7 +133,8 @@ CREATE TABLE IF NOT EXISTS recursos (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     licitacao_id        INTEGER NOT NULL REFERENCES licitacoes(id) ON DELETE CASCADE,
     intimado_em         TEXT    NOT NULL,   -- intimação ou lavratura da ata
-    recorrentes         TEXT,
+    notificado_em       TEXT,               -- notificação das empresas sobre o recurso
+    recorrentes         TEXT,               -- não usado (mantido por compatibilidade)
     razoes_ate          TEXT    NOT NULL,
     contrarrazoes_ate   TEXT    NOT NULL,
     reconsideracao_ate  TEXT    NOT NULL,
@@ -187,6 +188,9 @@ COLUNAS_NOVAS = {
     },
     "situacoes": {
         "whatsapp": "INTEGER NOT NULL DEFAULT 0",
+    },
+    "recursos": {
+        "notificado_em": "TEXT",
     },
     "usuarios": {
         "preferencias": "TEXT",

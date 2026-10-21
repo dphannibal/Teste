@@ -7,6 +7,7 @@ from datetime import date
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 
+from . import brasao
 from . import feriados as F
 from . import parametros as P
 from .auth import login_obrigatorio, permissao
@@ -101,6 +102,35 @@ def salvar_geral():
         conn.commit()
         P.invalidar()
     flash("Nome do órgão salvo.", "sucesso")
+    return redirect(url_for("config.parametros"))
+
+
+@bp.route("/parametros/brasao", methods=["POST"])
+@permissao("parametros")
+def salvar_brasao():
+    arquivo = request.files.get("brasao")
+    if not arquivo or not arquivo.filename:
+        flash("Escolha a imagem do brasão.", "erro")
+        return redirect(url_for("config.parametros"))
+    try:
+        brasao.salvar(arquivo.stream)
+    except ValueError as erro:
+        flash(str(erro), "erro")
+        return redirect(url_for("config.parametros"))
+    registrar("Alteração de parâmetro", referencia="Brasão do município",
+              detalhes=f"Imagem enviada: {arquivo.filename}")
+    get_db().commit()
+    flash("Brasão atualizado.", "sucesso")
+    return redirect(url_for("config.parametros"))
+
+
+@bp.route("/parametros/brasao/remover", methods=["POST"])
+@permissao("parametros")
+def remover_brasao():
+    brasao.remover()
+    registrar("Alteração de parâmetro", referencia="Brasão do município", detalhes="Removido")
+    get_db().commit()
+    flash("Brasão removido.", "sucesso")
     return redirect(url_for("config.parametros"))
 
 

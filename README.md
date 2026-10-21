@@ -5,7 +5,7 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
 
 ## Funcionalidades
 
-- **Painel**: cada usuário escolhe as **colunas, a ordem delas e o critério de
+- **Painel**: só aparecem os quadros que têm conteúdo. Cada usuário escolhe as **colunas, a ordem delas e o critério de
   ordenação** (também clicando no título da coluna). O quadro **Licitações em andamento**
   reúne editais publicados, remarcadas e sessões abertas, inclusive as suspensas depois de
   abertas para análise documental; as suspensas antes da abertura ficam em quadro próprio.
@@ -98,17 +98,22 @@ dos perfis** (o Administrador sempre tem tudo). Padrão inicial:
 
 ## Recursos
 
-Com a sessão em andamento, “Registrar recurso” informa a data da intimação ou da lavratura da
-ata e calcula, em dias úteis (art. 165): razões (3), contrarrazões (3, após as razões),
-reconsideração (3) e decisão da autoridade superior (até 10, data estimada). A licitação fica
-“Em recurso”, e o painel mostra o quadro **Em recurso — prazos** com a etapa atual. A
-situação só muda ao registrar a decisão (provido, não provido…).
+Com a sessão em andamento, o pregoeiro / agente registra o recurso informando as datas:
+intimação ou lavratura da ata, notificação das empresas sobre o recurso (opcional, comum na
+licitação presencial) e os prazos de razões, contrarrazões, reconsideração e decisão. O botão
+“Sugerir prazos legais” preenche as datas em dias úteis (art. 165: 3 + 3 + 3 + até 10; as
+contrarrazões contam da notificação das empresas, se houver), e todas podem ser ajustadas
+enquanto o recurso corre (“Prazos do recurso”). Vencimentos em dia sem expediente são
+recusados. A licitação fica “Em recurso”, o painel mostra o quadro **Em recurso — prazos**
+com a etapa atual, e a situação só muda ao registrar a decisão.
 
 ## Parâmetros (Configurações)
 
 Quem tem a permissão de parâmetros (Administrador e Gestor, por padrão) altera:
 
 - **Nome da secretaria/órgão** exibido no cabeçalho e nas imagens.
+- **Brasão do município**: imagem (PNG, JPG ou WebP) exibida no cabeçalho do sistema, na tela
+  de login e no cabeçalho da imagem do WhatsApp, reduzida proporcionalmente para caber.
 - **Modalidades**: nome, **sigla**, cor, ordem, se exige equipe, quem conduz (pregoeiro ou
   agente) e se funciona como credenciamento. O número do edital é digitado **sem a sigla**
   (ex.: `007/2026`) e aparece nas telas como `PE 007/2026`.

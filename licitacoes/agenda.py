@@ -52,14 +52,14 @@ ROTULOS = {
 CONSULTA_BASE = """
     SELECT l.*,
            a.nome AS agente_nome, m1.nome AS membro1_nome, m2.nome AS membro2_nome,
-           m3.nome AS membro3_nome, r.recurso_id, r.intimado_em, r.recorrentes, r.razoes_ate,
+           m3.nome AS membro3_nome, r.recurso_id, r.intimado_em, r.razoes_ate,
            r.contrarrazoes_ate, r.reconsideracao_ate, r.decisao_ate
       FROM licitacoes l
       LEFT JOIN servidores a  ON a.id  = l.agente_id
       LEFT JOIN servidores m1 ON m1.id = l.membro1_id
       LEFT JOIN servidores m2 ON m2.id = l.membro2_id
       LEFT JOIN servidores m3 ON m3.id = l.membro3_id
-      LEFT JOIN (SELECT id AS recurso_id, licitacao_id, intimado_em, recorrentes, razoes_ate,
+      LEFT JOIN (SELECT id AS recurso_id, licitacao_id, intimado_em, razoes_ate,
                         contrarrazoes_ate, reconsideracao_ate, decisao_ate
                    FROM recursos WHERE decidido_em IS NULL) r ON r.licitacao_id = l.id
 """
@@ -95,10 +95,11 @@ def etapa_recurso(lic):
     return "Decisão superior", lic["decisao_ate"], True
 
 
-def prazos_recurso(intimado_em):
-    """Prazos do art. 165, encadeados e em dias úteis, a partir da intimação/ata."""
+def prazos_recurso(intimado_em, notificado_em=None):
+    """Sugestão dos prazos do art. 165, em dias úteis, a partir da intimação/ata. As
+    contrarrazões contam do fim das razões ou, se informada, da notificação das empresas."""
     razoes = feriados.contar_dias_uteis(intimado_em, PRAZO_RAZOES)
-    contrarrazoes = feriados.contar_dias_uteis(razoes, PRAZO_CONTRARRAZOES)
+    contrarrazoes = feriados.contar_dias_uteis(notificado_em or razoes, PRAZO_CONTRARRAZOES)
     reconsideracao = feriados.contar_dias_uteis(contrarrazoes, PRAZO_RECONSIDERACAO)
     decisao = feriados.contar_dias_uteis(reconsideracao, PRAZO_DECISAO)
     return {"razoes_ate": razoes.isoformat(), "contrarrazoes_ate": contrarrazoes.isoformat(),
@@ -599,7 +600,7 @@ def detalhe(id_):
                                 (id_,)).fetchall()
     if lic["data_sessao"] and fase in FASES_ABERTAS:
         motivos = feriados.motivos(date.fromisoformat(lic["data_sessao"][:10]))
-        alertas += [f"A data da sessão é {feriados.descrever(m).lower()}." for m in motivos]
+        alertas += [f"A data da sessão é {_minuscula(feriados.descrever(m))}." for m in motivos]
     return render_template(
         "agenda/detalhe.html", lic=lic, historico=historico, escalados=escalados,
         prazo=(descricao_prazo, dias_prazo), data_minima=minima, recursos=recursos,
@@ -648,6 +649,11 @@ def editar(id_):
             return redirect(url_for("agenda.detalhe", id_=id_))
 
     return _render_form(dados, f"Editar {identificacao(lic)}", lic, pendentes, pontos)
+
+
+def _minuscula(texto):
+    """Só a primeira letra em minúscula, preservando nomes próprios (ex.: Três Rios)."""
+    return texto[:1].lower() + texto[1:]
 
 
 def _formatar(valor):
@@ -821,55 +827,136 @@ def _pode_recorrer(lic):
             and not P.eh_credenciamento(lic["modalidade"]) and not lic["recurso_id"])
 
 
+CAMPOS_RECURSO = {
+    "intimado_em": "Intimação / ata",
+    "notificado_em": "Notificação das empresas sobre o recurso",
+    "razoes_ate": "Razões até",
+    "contrarrazoes_ate": "Contrarrazões até",
+    "reconsideracao_ate": "Reconsideração até",
+    "decisao_ate": "Decisão até",
+}
+OBRIGATORIOS_RECURSO = ["intimado_em", "razoes_ate", "contrarrazoes_ate",
+                        "reconsideracao_ate", "decisao_ate"]
+
+
+def _validar_recurso(form):
+    """Datas informadas pelo pregoeiro: em ordem e com vencimentos em dias úteis."""
+    dados = {c: form.get(c, "").strip() for c in (*CAMPOS_RECURSO, "observacao")}
+    erros = []
+    for campo, rotulo in CAMPOS_RECURSO.items():
+        if not dados[campo]:
+            if campo in OBRIGATORIOS_RECURSO:
+                erros.append(f"Informe: {rotulo}.")
+            dados[campo] = None
+            continue
+        try:
+            dados[campo] = date.fromisoformat(dados[campo]).isoformat()
+        except ValueError:
+            erros.append(f"{rotulo}: data inválida.")
+            dados[campo] = None
+    if not erros:
+        sequencia = [c for c in OBRIGATORIOS_RECURSO if dados[c]]
+        for anterior, seguinte in zip(sequencia, sequencia[1:]):
+            if dados[seguinte] < dados[anterior]:
+                erros.append(f"{CAMPOS_RECURSO[seguinte]} não pode ser antes de "
+                             f"{CAMPOS_RECURSO[anterior].lower()}.")
+        if dados["notificado_em"] and dados["notificado_em"] < dados["intimado_em"]:
+            erros.append("A notificação das empresas não pode ser antes da intimação/ata.")
+        # Prazo que vence em dia sem expediente se prorroga (art. 183, § 2º).
+        for campo in ("razoes_ate", "contrarrazoes_ate", "reconsideracao_ate", "decisao_ate"):
+            motivos = feriados.motivos(date.fromisoformat(dados[campo]))
+            if motivos:
+                erros.append(f"{CAMPOS_RECURSO[campo]}: {_formatar(dados[campo])} não é dia "
+                             f"útil ({_minuscula(feriados.descrever(motivos[0]))}).")
+    return dados, erros
+
+
+def _descrever_prazos_recurso(dados):
+    return "; ".join(f"{rotulo}: {_formatar(dados[c])}" for c, rotulo in CAMPOS_RECURSO.items()
+                     if dados.get(c))
+
+
+def _render_recurso(lic, dados, editando):
+    return render_template(
+        "agenda/recurso.html", lic=lic, dados=dados, editando=editando,
+        prazos_legais=(PRAZO_RAZOES, PRAZO_CONTRARRAZOES, PRAZO_RECONSIDERACAO, PRAZO_DECISAO),
+        nao_uteis=feriados.dias_nao_uteis(date.today() - timedelta(days=120),
+                                          date.today() + timedelta(days=240)),
+    )
+
+
 @bp.route("/licitacoes/<int:id_>/recurso", methods=["GET", "POST"])
 @permissao("recursos")
 def recurso(id_):
-    """Recurso (art. 165): calcula os prazos de razões, contrarrazões, reconsideração e
-    decisão, em dias úteis, a partir da intimação ou da lavratura da ata."""
+    """Recurso (art. 165). O pregoeiro informa as datas; o sistema sugere os prazos legais
+    em dias úteis a partir da intimação/ata (e da notificação das empresas, se houver)."""
     lic = _buscar(id_)
     if not _pode_recorrer(lic):
         abort(400, "Só cabe registrar recurso com a sessão em andamento e sem outro recurso "
                    "pendente.")
-    dados = {"intimado_em": date.today().isoformat()}
+    dados = {"intimado_em": date.today().isoformat(), **prazos_recurso(date.today())}
     if request.method == "POST":
-        dados = {c: request.form.get(c, "").strip()
-                 for c in ("intimado_em", "recorrentes", "observacao")}
-        try:
-            intimado = date.fromisoformat(dados["intimado_em"])
-        except ValueError:
-            flash("Informe a data da intimação ou da lavratura da ata.", "erro")
+        dados, erros = _validar_recurso(request.form)
+        if erros:
+            for e in erros:
+                flash(e, "erro")
         else:
-            prazos = prazos_recurso(intimado)
             conn = get_db()
             conn.execute(
-                "INSERT INTO recursos (licitacao_id, intimado_em, recorrentes, razoes_ate,"
+                "INSERT INTO recursos (licitacao_id, intimado_em, notificado_em, razoes_ate,"
                 " contrarrazoes_ate, reconsideracao_ate, decisao_ate, status_anterior,"
                 " observacao) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (id_, intimado.isoformat(), dados["recorrentes"] or None, prazos["razoes_ate"],
-                 prazos["contrarrazoes_ate"], prazos["reconsideracao_ate"],
-                 prazos["decisao_ate"], lic["status"], dados["observacao"] or None),
+                (id_, dados["intimado_em"], dados["notificado_em"], dados["razoes_ate"],
+                 dados["contrarrazoes_ate"], dados["reconsideracao_ate"], dados["decisao_ate"],
+                 lic["status"], dados["observacao"] or None),
             )
             conn.execute("UPDATE licitacoes SET status = ?, suspensa_em = NULL,"
                          " motivo_suspensao = NULL, ocorrencia = NULL,"
                          " atualizado_em = datetime('now', 'localtime') WHERE id = ?",
                          (RECURSO, id_))
             registrar("Recurso interposto", referencia=identificacao(lic), licitacao_id=id_,
-                      detalhes=f"Intimação/ata em {_formatar(intimado.isoformat())}. Razões até "
-                               f"{_formatar(prazos['razoes_ate'])}; contrarrazões até "
-                               f"{_formatar(prazos['contrarrazoes_ate'])}"
-                               + (f". Recorrente(s): {dados['recorrentes']}"
-                                  if dados["recorrentes"] else ""))
+                      detalhes=_descrever_prazos_recurso(dados))
             conn.commit()
             flash("Recurso registrado.", "sucesso")
             return redirect(url_for("agenda.detalhe", id_=id_))
-    previa = None
-    try:
-        previa = prazos_recurso(date.fromisoformat(dados["intimado_em"]))
-    except ValueError:
-        pass
-    return render_template("agenda/recurso.html", lic=lic, dados=dados, previa=previa,
-                           prazos_legais=(PRAZO_RAZOES, PRAZO_CONTRARRAZOES,
-                                          PRAZO_RECONSIDERACAO, PRAZO_DECISAO))
+    return _render_recurso(lic, dados, editando=False)
+
+
+@bp.route("/licitacoes/<int:id_>/recurso/prazos", methods=["GET", "POST"])
+@permissao("recursos")
+def editar_recurso(id_):
+    """Ajuste dos prazos durante o recurso (ex.: notificação das empresas na licitação
+    presencial, que reabre a contagem das contrarrazões)."""
+    lic = _buscar(id_)
+    if not lic["recurso_id"]:
+        abort(400, "Não há recurso pendente nesta licitação.")
+    conn = get_db()
+    atual = conn.execute("SELECT * FROM recursos WHERE id = ?", (lic["recurso_id"],)).fetchone()
+    dados = dict(atual)
+    if request.method == "POST":
+        dados, erros = _validar_recurso(request.form)
+        if erros:
+            for e in erros:
+                flash(e, "erro")
+        else:
+            mudancas = [f"{rotulo}: {_formatar(atual[c])} → {_formatar(dados[c])}"
+                        for c, rotulo in CAMPOS_RECURSO.items() if atual[c] != dados[c]]
+            conn.execute(
+                "UPDATE recursos SET intimado_em = ?, notificado_em = ?, razoes_ate = ?,"
+                " contrarrazoes_ate = ?, reconsideracao_ate = ?, decisao_ate = ?,"
+                " observacao = ? WHERE id = ?",
+                (dados["intimado_em"], dados["notificado_em"], dados["razoes_ate"],
+                 dados["contrarrazoes_ate"], dados["reconsideracao_ate"], dados["decisao_ate"],
+                 dados["observacao"] or None, atual["id"]),
+            )
+            if mudancas:
+                registrar("Prazos do recurso alterados", referencia=identificacao(lic),
+                          licitacao_id=id_, detalhes="; ".join(mudancas))
+            conn.commit()
+            flash("Prazos do recurso atualizados." if mudancas else "Nenhuma alteração.",
+                  "sucesso" if mudancas else "info")
+            return redirect(url_for("agenda.detalhe", id_=id_))
+    return _render_recurso(lic, dados, editando=True)
 
 
 @bp.route("/licitacoes/<int:id_>/recurso/decisao", methods=["GET", "POST"])

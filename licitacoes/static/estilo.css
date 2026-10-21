@@ -209,3 +209,13 @@ td.acoes > * { display: inline-block; margin-right: .6rem; vertical-align: middl
 .opcoes-em-linha { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin: .5rem 0 1rem; }
 .opcoes-em-linha label.opcao { margin: 0; }
 td.etapa-atual { font-weight: 700; text-decoration: underline; }
+
+/* Brasão */
+.marca { flex-direction: row; align-items: center; gap: .6rem; }
+.marca > span { display: flex; flex-direction: column; line-height: 1.2; }
+.marca .brasao { max-height: 40px; max-width: 64px; width: auto; height: auto; object-fit: contain; }
+.brasao-login { display: block; margin: 0 auto 1rem; max-height: 110px; max-width: 160px; width: auto; height: auto; }
+.login h1 { justify-content: center; }
+.login .sutil { text-align: center; }
+.linha-brasao { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
+.brasao-previa { max-height: 80px; max-width: 120px; border: 1px solid var(--borda); border-radius: 6px; padding: .3rem; background: #fff; }

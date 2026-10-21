@@ -7,18 +7,21 @@
   <div class="acoes"><a class="botao whatsapp" href="{{ url_for('agenda.whatsapp') }}">Enviar abertas pelo WhatsApp</a></div>
 </div>
 
+{# Cada quadro só aparece quando tem conteúdo, para manter a tela limpa. #}
+{% if contagem %}
 <section class="indicadores">
   {% for s in situacoes if contagem.get(s.chave) %}
     {% set cor = cores_situacao(s.chave) %}
     <a class="indicador" style="border-top-color: {{ cor[1] }};" href="{{ url_for('agenda.lista', status=s.chave) }}">
       <strong>{{ contagem[s.chave] }}</strong><span>{{ s.nome }}</span>
     </a>
-  {% else %}
-    <p class="vazio">Nenhuma licitação cadastrada ainda.{% if pode('criar') %} <a href="{{ url_for('agenda.nova') }}">Cadastrar a primeira</a>.{% endif %}</p>
   {% endfor %}
 </section>
+{% else %}
+<p class="vazio">Nenhuma licitação cadastrada ainda.{% if pode('criar') %} <a href="{{ url_for('agenda.nova') }}">Cadastrar a primeira</a>.{% endif %}</p>
+{% endif %}
 
-{{ personalizar() }}
+{% if em_andamento or suspensas %}{{ personalizar() }}{% endif %}
 
 {% if sessoes_hoje %}
 <section class="cartao destaque">
@@ -31,19 +34,25 @@
 </section>
 {% endif %}
 
+{% if em_andamento %}
 <section class="cartao">
   <h2>Licitações em andamento</h2>
   <p class="sutil">Editais publicados, sessões remarcadas e sessões abertas — inclusive as suspensas depois de abertas, para análise documental.</p>
-  {{ tabela(em_andamento, 'Nenhuma licitação em andamento.', agora) }}
+  {{ tabela(em_andamento, agora=agora) }}
 </section>
+{% endif %}
+
+{% if contagem and not (em_andamento or em_recurso or suspensas or credenciamentos) %}
+<p class="vazio">Nenhuma licitação aberta no momento.</p>
+{% endif %}
 
 {% if em_recurso %}
 <section class="cartao alerta">
   <h2>Em recurso — prazos</h2>
-  <p class="sutil">Prazos em dias úteis (art. 165 da Lei 14.133): razões, contrarrazões, reconsideração e decisão da autoridade superior (estimada).</p>
+  <p class="sutil">Prazos informados pelo pregoeiro / agente (art. 165 da Lei 14.133). A etapa atual está sublinhada.</p>
   <div class="tabela-rolagem">
   <table class="licitacoes">
-    <thead><tr><th>Edital</th><th>Etapa atual</th><th>Razões até</th><th>Contrarrazões até</th><th>Reconsideração até</th><th>Decisão até</th><th>Recorrente(s)</th></tr></thead>
+    <thead><tr><th>Edital</th><th>Etapa atual</th><th>Razões até</th><th>Contrarrazões até</th><th>Reconsideração até</th><th>Decisão até</th></tr></thead>
     <tbody>
     {% for l in em_recurso %}
       {% set etapa = etapa_recurso(l) %}
@@ -53,7 +62,6 @@
         {% for campo in ['razoes_ate', 'contrarrazoes_ate', 'reconsideracao_ate', 'decisao_ate'] %}
           <td class="nowrap {% if l[campo] == etapa[1] %}etapa-atual{% endif %}">{{ l[campo]|data(false) }}</td>
         {% endfor %}
-        <td>{{ l.recorrentes or '—' }}</td>
       </tr>
     {% endfor %}
     </tbody>

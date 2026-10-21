@@ -2,6 +2,7 @@
 {% block titulo %}Entrar{% endblock %}
 {% block conteudo %}
 <div class="cartao estreito login">
+  {% if brasao_url %}<img class="brasao-login" src="{{ brasao_url }}" alt="Brasão do município">{% endif %}
   <h1>Agenda de Licitações</h1>
   <p class="sutil">{{ nome_orgao }} — acesso restrito à intranet</p>
   <form method="post">

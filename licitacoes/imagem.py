@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import parametros
+from . import brasao, parametros
 
 LARGURA, ALTURA = 1080, 1920
 MARGEM = 48
@@ -198,23 +198,38 @@ def _altura(bloco, layout):
         for c, l in _linhas_do_cartao(bloco, layout))
 
 
-def _linhas_cabecalho(titulo, orgao, layout):
+def _linhas_cabecalho(titulo, orgao, layout, largura=LARGURA - 2 * MARGEM):
     """[(texto, peso, tamanho)] do cabeçalho; nos layouts compactos, órgão e data dividem
-    a mesma linha quando cabem."""
+    a mesma linha quando cabem na largura."""
     t_titulo, t_orgao, t_data = layout["cabecalho"]
     atualizado = f"Atualizado em {datetime.now():%d/%m/%Y às %H:%M}"
     juntos = f"{orgao} · {atualizado}"
     if (layout["modalidade_ao_lado"]
             and _medidor.textlength(juntos, font=_fonte("normal", t_data))
-            <= LARGURA - 2 * MARGEM):
+            <= largura):
         return [(titulo, "negrito", t_titulo), (juntos, "normal", t_data)]
     return [(titulo, "negrito", t_titulo), (orgao, "normal", t_orgao),
             (atualizado, "semi", t_data)]
 
 
+def _cabecalho(titulo, orgao, layout):
+    """(altura da faixa, linhas de texto, brasão reduzido ou None, x do texto).
+
+    O brasão fica à esquerda, reduzido proporcionalmente para caber na altura da faixa."""
+    linhas = _linhas_cabecalho(titulo, orgao, layout)
+    altura = 36 + sum(round(t * 1.32) for _, _, t in linhas) + 20
+    imagem = brasao.para_caber(220, altura - 24)
+    if imagem is None:
+        return altura, linhas, None, MARGEM
+    x = MARGEM + imagem.width + 24
+    linhas = _linhas_cabecalho(titulo, orgao, layout, LARGURA - x - MARGEM)
+    altura = max(altura, 36 + sum(round(t * 1.32) for _, _, t in linhas) + 20)
+    return altura, linhas, imagem, x
+
+
 def _altura_faixa(titulo, orgao, layout):
     """Altura da faixa azul do cabeçalho, calculada pelo texto."""
-    return 36 + sum(round(t * 1.32) for _, _, t in _linhas_cabecalho(titulo, orgao, layout)) + 20
+    return _cabecalho(titulo, orgao, layout)[0]
 
 
 def _encher(alturas, limite):
@@ -261,12 +276,14 @@ def desenhar(blocos, pagina, total, titulo, orgao, layout=LAYOUTS[0]):
     img = Image.new("RGB", (LARGURA, ALTURA), FUNDO)
     d = ImageDraw.Draw(img)
 
-    faixa = _altura_faixa(titulo, orgao, layout)
+    faixa, linhas, imagem_brasao, x_texto = _cabecalho(titulo, orgao, layout)
     topo = faixa + layout["espaco"] + 10
     d.rectangle((0, 0, LARGURA, faixa), fill=PRIMARIA)
+    if imagem_brasao is not None:
+        img.paste(imagem_brasao, (MARGEM, (faixa - imagem_brasao.height) // 2), imagem_brasao)
     y = 36
-    for indice, (texto, peso, tamanho) in enumerate(_linhas_cabecalho(titulo, orgao, layout)):
-        d.text((MARGEM, y), texto, font=_fonte(peso, tamanho),
+    for indice, (texto, peso, tamanho) in enumerate(linhas):
+        d.text((x_texto, y), texto, font=_fonte(peso, tamanho),
                fill="white" if indice != 1 or peso == "semi" else "#dbe6f5")
         y += round(tamanho * 1.32)
     if total > 1:

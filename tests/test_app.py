@@ -16,7 +16,7 @@ SENHA = "senha-segura-1"
 @pytest.fixture
 def app(tmp_path):
     app = create_app({"TESTING": True, "DATABASE": str(tmp_path / "teste.sqlite3"),
-                      "SECRET_KEY": "teste"})
+                      "SECRET_KEY": "teste", "PASTA_ARQUIVOS": str(tmp_path)})
     with app.app_context():
         conn = get_db()
         for perfil in ("administrador", "gestor", "pregoeiro", "consulta"):
@@ -691,23 +691,42 @@ def test_dispensa_conta_o_dia_do_aviso(client):
                 "/licitacoes/nova").status_code == 302
 
 
+RECURSO = {"intimado_em": "2027-11-19", "razoes_ate": "2027-11-24",
+           "contrarrazoes_ate": "2027-11-29", "reconsideracao_ate": "2027-12-02",
+           "decisao_ate": "2027-12-17"}
+
+
 def test_recurso_e_prazos_no_painel(client):
     entrar(client, "pregoeiro")
     id_ = criar_licitacao(client)
     # Só cabe recurso com a sessão aberta.
     assert client.get(f"/licitacoes/{id_}/recurso").status_code == 400
     abrir_sessao(client, id_)
-
-    # Ata lavrada na sexta 19/11/2027: razões 22–24/11, contrarrazões 25–29/11,
-    # reconsideração 30/11–02/12 e decisão em até 10 dias úteis — 17/12, porque 14/12 é o
-    # feriado da emancipação de Três Rios.
     url = f"/licitacoes/{id_}/recurso"
-    post(client, url, {"intimado_em": "2027-11-19", "recorrentes": "Empresa X"}, url)
+    # A tela já vem com a sugestão dos prazos legais, que o pregoeiro pode alterar.
+    assert 'name="razoes_ate"' in client.get(url).get_data(as_text=True)
+
+    # Datas fora de ordem ou em dia sem expediente são recusadas.
+    html = post(client, url, dict(RECURSO, contrarrazoes_ate="2027-11-23"), url).get_data(
+        as_text=True)
+    assert "Contrarrazões até não pode ser antes" in html
+    html = post(client, url, dict(RECURSO, decisao_ate="2027-12-14"), url).get_data(as_text=True)
+    assert "não é dia útil" in html and "Emancipação de Três Rios" in html
+
+    post(client, url, RECURSO, url)
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
     for data in ("24/11/2027", "29/11/2027", "02/12/2027", "17/12/2027"):
         assert data in pagina
     painel = client.get("/").get_data(as_text=True)
-    assert "Em recurso — prazos" in painel and "Empresa X" in painel and "24/11/2027" in painel
+    assert "Em recurso — prazos" in painel and "24/11/2027" in painel
+
+    # Licitação presencial: o pregoeiro notifica as empresas e ajusta as contrarrazões.
+    prazos = f"/licitacoes/{id_}/recurso/prazos"
+    post(client, prazos, dict(RECURSO, notificado_em="2027-11-25", contrarrazoes_ate="2027-11-30",
+                              reconsideracao_ate="2027-12-03"), prazos)
+    pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
+    assert "25/11/2027" in pagina and "30/11/2027" in pagina
+    assert "Prazos do recurso alterados" in pagina
 
     # Enquanto o recurso corre, a situação só muda pela decisão.
     html = post(client, f"/licitacoes/{id_}/editar", dict(LICITACAO, status="homologada"),
@@ -719,6 +738,62 @@ def test_recurso_e_prazos_no_painel(client):
     pagina = client.get(f"/licitacoes/{id_}").get_data(as_text=True)
     assert "Não provido em 10/12/2027" in pagina and "Homologada" in pagina
     assert "Em recurso — prazos" not in client.get("/").get_data(as_text=True)
+
+
+def test_sugestao_de_prazos_do_recurso(app):
+    from licitacoes.agenda import prazos_recurso
+    with app.test_request_context():
+        # Contrarrazões contam do fim das razões ou, se houver, da notificação das empresas.
+        assert prazos_recurso(date(2027, 11, 19)) == {
+            "razoes_ate": "2027-11-24", "contrarrazoes_ate": "2027-11-29",
+            "reconsideracao_ate": "2027-12-02", "decisao_ate": "2027-12-17"}
+        assert prazos_recurso(date(2027, 11, 19), date(2027, 11, 25))["contrarrazoes_ate"] \
+            == "2027-11-30"
+
+
+def test_painel_mostra_so_os_quadros_necessarios(client):
+    entrar(client, "pregoeiro")
+    html = client.get("/").get_data(as_text=True)
+    assert "Nenhuma licitação cadastrada" in html
+    for quadro in ("Licitações em andamento", "Em recurso", "Suspensas antes",
+                   "Credenciamentos abertos", "Colunas e ordenação", "Sessões de hoje"):
+        assert quadro not in html
+    criar_licitacao(client)
+    html = client.get("/").get_data(as_text=True)
+    assert "Licitações em andamento" in html and "Colunas e ordenação" in html
+    for quadro in ("Em recurso", "Suspensas antes", "Credenciamentos abertos"):
+        assert quadro not in html
+
+
+def test_brasao_no_cabecalho_e_na_imagem(client):
+    from PIL import Image
+
+    entrar(client, "gestor")
+    criar_licitacao(client)
+    assert client.get("/brasao.png").status_code == 404
+
+    grande = io.BytesIO()
+    Image.new("RGBA", (1200, 1600), (200, 30, 30, 255)).save(grande, "PNG")
+    grande.seek(0)
+    post(client, "/admin/parametros/brasao", {"brasao": (grande, "brasao.png")},
+         "/admin/parametros")
+    resp = client.get("/brasao.png")
+    assert resp.status_code == 200
+    # Guardado reduzido proporcionalmente (3:4).
+    assert Image.open(io.BytesIO(resp.data)).size == (450, 600)
+    assert 'class="brasao"' in client.get("/").get_data(as_text=True)
+
+    imagem = Image.open(io.BytesIO(client.get("/licitacoes/whatsapp/1.png").data)).convert("RGB")
+    # O brasão vermelho aparece à esquerda do cabeçalho azul.
+    assert imagem.getpixel((70, 100)) == (200, 30, 30)
+
+    html = post(client, "/admin/parametros/brasao",
+                {"brasao": (io.BytesIO(b"isto nao e imagem"), "brasao.png")},
+                "/admin/parametros")
+    assert "não é uma imagem válida" in client.get(html.headers["Location"]).get_data(
+        as_text=True)
+    post(client, "/admin/parametros/brasao/remover", {}, "/admin/parametros")
+    assert client.get("/brasao.png").status_code == 404
 
 
 def test_filtro_de_situacoes_no_whatsapp(client):

@@ -9,7 +9,10 @@
 <body>
 {% if g.usuario %}
 <header class="topo">
-  <a class="marca" href="{{ url_for('agenda.painel') }}">Agenda de Licitações<small>{{ nome_orgao }}</small></a>
+  <a class="marca" href="{{ url_for('agenda.painel') }}">
+    {% if brasao_url %}<img class="brasao" src="{{ brasao_url }}" alt="Brasão">{% endif %}
+    <span>Agenda de Licitações<small>{{ nome_orgao }}</small></span>
+  </a>
   <nav>
     {% if not g.usuario.trocar_senha %}
     <a href="{{ url_for('agenda.painel') }}">Painel</a>

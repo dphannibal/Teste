@@ -4,10 +4,10 @@ import secrets
 from datetime import datetime
 
 import click
-from flask import Flask, abort, g, render_template, request, session
+from flask import Flask, abort, g, render_template, request, send_file, session, url_for
 from werkzeug.security import generate_password_hash
 
-from . import db, parametros
+from . import brasao, db, parametros
 from .perfis import PERFIS
 
 
@@ -22,6 +22,8 @@ def create_app(config=None):
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=8 * 60 * 60,  # uma jornada de trabalho
         NOME_ORGAO=os.environ.get("NOME_ORGAO", "Secretaria"),
+        PASTA_ARQUIVOS=app.instance_path,      # brasão e outros arquivos enviados
+        MAX_CONTENT_LENGTH=8 * 1024 * 1024,     # limite de envio de arquivos
     )
     if config:
         app.config.update(config)
@@ -38,6 +40,12 @@ def create_app(config=None):
     app.register_blueprint(agenda.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(configuracoes.bp)
+
+    @app.route("/brasao.png")
+    def imagem_brasao():
+        if not brasao.existe():
+            abort(404)
+        return send_file(brasao.caminho(), mimetype="image/png", max_age=86400)
 
     with app.app_context():
         db.init_db()
@@ -97,6 +105,8 @@ def _registrar_filtros(app):
             "nome_situacao": lambda chave: parametros.situacao(chave)["nome"],
             "situacoes_ativas": lambda: parametros.situacoes(somente_ativas=True),
             "fase_de": parametros.fase,
+            "brasao_url": (url_for("imagem_brasao", v=brasao.versao())
+                           if brasao.existe() else None),
             "modalidade_de": parametros.modalidade,
         }
 

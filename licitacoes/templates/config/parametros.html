@@ -16,6 +16,21 @@
     <label>Nome da secretaria / órgão<input name="nome_orgao" required value="{{ nome_orgao }}"></label>
     <button class="primario">Salvar</button>
   </form>
+  <div class="linha-brasao">
+    {% if brasao_url %}<img class="brasao-previa" src="{{ brasao_url }}" alt="Brasão atual">{% endif %}
+    <form method="post" action="{{ url_for('config.salvar_brasao') }}" enctype="multipart/form-data" class="linha-form">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label>Brasão do município (PNG, JPG ou WebP)
+        <input type="file" name="brasao" accept="image/png,image/jpeg,image/webp,image/gif" required>
+        <small>Aparece no cabeçalho do sistema e da imagem do WhatsApp; é reduzido proporcionalmente se for maior que o espaço. PNG com fundo transparente fica melhor.</small></label>
+      <button class="primario">Enviar brasão</button>
+    </form>
+    {% if brasao_url %}
+    <form method="post" action="{{ url_for('config.remover_brasao') }}" onsubmit="return confirm('Remover o brasão?');">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="link">Remover brasão</button>
+    </form>
+    {% endif %}
+  </div>
 </section>
 
 <section class="cartao">

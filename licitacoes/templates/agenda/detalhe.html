@@ -8,7 +8,8 @@
   <div class="acoes">
     {% if pode('editar') %}<a class="botao primario" href="{{ url_for('agenda.editar', id_=lic.id) }}">Editar</a>{% endif %}
     {% if pode('recursos') and pode_recorrer %}<a class="botao" href="{{ url_for('agenda.recurso', id_=lic.id) }}">Registrar recurso</a>{% endif %}
-    {% if pode('recursos') and lic.recurso_id %}<a class="botao primario" href="{{ url_for('agenda.decidir_recurso', id_=lic.id) }}">Decisão do recurso</a>{% endif %}
+    {% if pode('recursos') and lic.recurso_id %}<a class="botao" href="{{ url_for('agenda.editar_recurso', id_=lic.id) }}">Prazos do recurso</a>
+    <a class="botao primario" href="{{ url_for('agenda.decidir_recurso', id_=lic.id) }}">Decisão do recurso</a>{% endif %}
     {% if pode('suspender') and pode_suspender %}<a class="botao" href="{{ url_for('agenda.suspender', id_=lic.id) }}">Suspender / remarcar</a>{% endif %}
     {% if cred and pode('editar') and fase == 'andamento' %}
     <form method="post" action="{{ url_for('agenda.renovar', id_=lic.id) }}" onsubmit="return confirm('Renovar a vigência do credenciamento por mais um ano?');">
@@ -55,16 +56,16 @@
   <h2>Recursos</h2>
   <div class="tabela-rolagem">
   <table>
-    <thead><tr><th>Intimação / ata</th><th>Razões até</th><th>Contrarrazões até</th><th>Reconsideração até</th><th>Decisão até</th><th>Recorrente(s)</th><th>Resultado</th></tr></thead>
+    <thead><tr><th>Intimação / ata</th><th>Notificação</th><th>Razões até</th><th>Contrarrazões até</th><th>Reconsideração até</th><th>Decisão até</th><th>Resultado</th></tr></thead>
     <tbody>
     {% for r in recursos %}
       <tr>
         <td class="nowrap">{{ r.intimado_em|data(false) }}</td>
+        <td class="nowrap">{{ r.notificado_em|data(false) if r.notificado_em else '—' }}</td>
         <td class="nowrap">{{ r.razoes_ate|data(false) }}</td>
         <td class="nowrap">{{ r.contrarrazoes_ate|data(false) }}</td>
         <td class="nowrap">{{ r.reconsideracao_ate|data(false) }}</td>
-        <td class="nowrap">{{ r.decisao_ate|data(false) }} <small>(estimada)</small></td>
-        <td>{{ r.recorrentes or '—' }}</td>
+        <td class="nowrap">{{ r.decisao_ate|data(false) }}</td>
         <td>{% if r.decidido_em %}{{ r.resultado }} em {{ r.decidido_em|data(false) }}{% else %}<strong>Em curso</strong> — {{ etapa_recurso(r)[0] }} até {{ etapa_recurso(r)[1]|data(false) }}{% endif %}</td>
       </tr>
     {% endfor %}
