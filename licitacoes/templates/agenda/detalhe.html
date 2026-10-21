@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import selo with context %}
-{% block titulo %}{{ lic.numero_processo }}{% endblock %}
+{% from '_macros.html' import situacao_selo, estilo_modalidade with context %}
+{% block titulo %}{{ lic.numero_edital or lic.numero_processo }}{% endblock %}
 {% block conteudo %}
 {% set cred = lic.modalidade == credenciamento %}
-<div class="cabecalho">
-  <h1>{{ lic.modalidade }} {{ lic.numero_edital or '' }} {{ selo(lic.status) }}</h1>
+<div class="cabecalho titulo-licitacao" style="{{ estilo_modalidade(lic.modalidade) }}">
+  <h1><span class="edital grande">{{ lic.numero_edital or 'Sem nº de edital' }}</span> <span class="modalidade">{{ lic.modalidade }}</span> {{ situacao_selo(lic) }}</h1>
   <div class="acoes">
     {% if pode('editar') %}<a class="botao primario" href="{{ url_for('agenda.editar', id_=lic.id) }}">Editar</a>{% endif %}
     {% if pode('suspender') and pode_suspender %}<a class="botao" href="{{ url_for('agenda.suspender', id_=lic.id) }}">Suspender / remarcar</a>{% endif %}
@@ -14,7 +14,7 @@
       <button>Renovar por 1 ano</button>
     </form>
     {% endif %}
-    <a class="botao whatsapp" href="{{ link_whatsapp }}" target="_blank" rel="noopener">WhatsApp</a>
+    <a class="botao whatsapp" href="{{ url_for('agenda.whatsapp_licitacao', id_=lic.id) }}">Imagem p/ WhatsApp</a>
     {% if pode('excluir') %}
     <form method="post" action="{{ url_for('agenda.excluir', id_=lic.id) }}" onsubmit="return confirm('Excluir definitivamente esta licitação?');">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
@@ -24,20 +24,21 @@
   </div>
 </div>
 
-{% if lic.status == 'Suspensa' %}
-<div class="aviso aviso-alerta"><strong>Sessão suspensa sem data definida</strong>{% if lic.suspensa_em %} desde {{ lic.suspensa_em|data }}{% endif %}.{% if lic.motivo_suspensao %} Motivo: {{ lic.motivo_suspensao }}{% endif %}</div>
+{% if lic.suspensa_em %}
+<div class="aviso aviso-alerta"><strong>{{ OCORRENCIAS[lic.ocorrencia].rotulo if lic.ocorrencia in OCORRENCIAS else 'Suspensa' }}</strong> desde {{ lic.suspensa_em|data }}.{% if lic.motivo_suspensao %} Motivo: {{ lic.motivo_suspensao }}{% endif %}</div>
+{% elif lic.ocorrencia in OCORRENCIAS and lic.status in ['Remarcada', 'Em andamento'] %}
+<div class="aviso aviso-info"><strong>{{ OCORRENCIAS[lic.ocorrencia].rotulo }}</strong> para {{ lic.data_sessao|data }}.</div>
 {% endif %}
-{% for alerta in alertas_equipe %}<div class="aviso aviso-erro">{{ alerta }}</div>{% endfor %}
+{% for alerta in alertas_equipe %}<div class="aviso aviso-erro">{{ alerta }}{% if pode('editar') %} <a href="{{ url_for('agenda.editar', id_=lic.id) }}">Editar equipe</a>{% endif %}</div>{% endfor %}
 
 <section class="cartao">
   <dl class="dados">
     <dt>Nº do processo</dt><dd>{{ lic.numero_processo }}</dd>
-    <dt>Nº do edital</dt><dd>{{ lic.numero_edital or '—' }}</dd>
     <dt>Publicação do edital</dt><dd>{{ lic.data_publicacao|data(false) if lic.data_publicacao else '—' }}</dd>
     {% if cred %}
     <dt>Vigência até</dt><dd>{{ lic.vigencia_ate|data(false) if lic.vigencia_ate else '—' }} <small>(aberto a novos credenciados enquanto vigente; renovação anual)</small></dd>
     {% else %}
-    <dt>Data da sessão</dt><dd>{{ lic.data_sessao|data if lic.data_sessao else 'A definir' }}{% if lic.status == 'Remarcada' %} <small>(remarcada)</small>{% endif %}</dd>
+    <dt>Data da sessão</dt><dd>{{ lic.data_sessao|data if lic.data_sessao else 'A definir' }}</dd>
     {% endif %}
     <dt>Local / plataforma</dt><dd>{{ lic.local or '—' }}</dd>
     <dt>Valor estimado</dt><dd>{{ lic.valor_estimado|moeda }}</dd>
@@ -49,9 +50,9 @@
 <section class="cartao">
   <h2>Equipe</h2>
   <dl class="dados">
-    {% for campo, rotulo in [('agente_id', 'Pregoeiro / agente de contratação'), ('membro1_id', 'Membro'), ('membro2_id', 'Membro')] %}
-      {% set s = equipe.get(lic[campo]) %}
-      <dt>{{ rotulo }}</dt>
+    {% for campo, rotulo in funcoes.items() if campo != 'membro3_id' or lic.membro3_id %}
+      {% set s = escalados.get(lic[campo]) %}
+      <dt>{{ rotulo|replace(' (3, opcional)', ' (3)') }}</dt>
       <dd>{% if s %}{{ s.nome }}{% if s.matricula %} <small>mat. {{ s.matricula }}</small>{% endif %}
         <span class="selo {{ 'selo-verde' if s.vinculo in efetivos else 'selo-cinza' }}">{{ 'Efetivo' if s.vinculo in efetivos else 'Não efetivo' }}</span>
         {% else %}—{% endif %}</dd>

@@ -5,7 +5,11 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
 
 ## Funcionalidades
 
-- **Painel**: sessões de hoje, todas as próximas sessões (sem limite de prazo, pois há
+- **Painel**: o **número do edital** (PE 007/2026, CE 075/2025…) é o destaque de cada
+  linha, e as linhas têm **cores suaves por modalidade** (pregão eletrônico em verde,
+  pregão presencial em vermelho, concorrência eletrônica em azul etc.). Cada linha mostra
+  a equipe (pregoeiro/agente e os dois membros; o terceiro só aparece se escalado).
+  Mostra sessões de hoje, todas as próximas sessões (sem limite de prazo, pois há
   editais publicados com mais de 30 dias de antecedência), suspensas sem data definida,
   credenciamentos abertos com alerta de renovação, totais por situação e sessões que já
   passaram sem desfecho registrado.
@@ -16,17 +20,25 @@ com controle de acesso por perfil de usuário e trilha de auditoria.
 - **Credenciamento**: fica aberto por tempo indeterminado, sem sessão; tem vigência anual
   (padrão: 1 ano após a publicação) renovada pelo botão “Renovar por 1 ano”. Só admite as
   situações “Em andamento” e “Concluída”.
-- **Equipe**: pregoeiro ou agente de contratação e mais dois membros, escolhidos no
-  cadastro de **servidores** (com vínculo funcional). O sistema **impede salvar uma equipe
-  com minoria de efetivos** (ao menos 2 dos 3 devem ser efetivos ou empregados públicos do
-  quadro permanente) e exige a equipe completa fora da fase de planejamento (exceto
+- **Equipe**: pregoeiro ou agente de contratação e mais dois membros, além de um terceiro
+  membro opcional, escolhidos no cadastro de **servidores** (com vínculo funcional). O sistema **impede salvar uma equipe
+  com minoria de efetivos** (com 3 integrantes, ao menos 2 efetivos ou empregados públicos
+  do quadro permanente) e exige a equipe completa fora da fase de planejamento (exceto
   inexigibilidade).
-- **Suspender / remarcar**: registra a sessão **suspensa sem data definida** (com data e
-  hora da suspensão e motivo) ou **remarcada** (com a nova data e hora).
-- **WhatsApp**: botão que monta a lista das licitações abertas (edital publicado,
-  remarcadas, em andamento, suspensas e credenciamentos abertos) já formatada para o
-  WhatsApp, com opção de abrir o WhatsApp/WhatsApp Web ou copiar o texto. Cada licitação
-  também pode ser compartilhada individualmente.
+- **Férias e afastamentos**: registrados por servidor. O sistema impede escalar quem
+  estará afastado na data da sessão; se a sessão **já estiver em andamento**, avisa e
+  permite **trocar ou manter** o membro (a decisão vai para o histórico). O painel alerta
+  quando um afastamento lançado depois atinge uma equipe já escalada.
+- **Suspender / remarcar**, conforme a fase da sessão pública:
+  - antes da abertura: *suspensa sem data definida*, *remarcada* ou *remarcada após
+    retificação do edital*;
+  - com a sessão aberta (em andamento): *suspensa para análise documental* ou
+    *remarcada pelo pregoeiro (continuação)* em outro dia.
+  Todas exigem data e hora e ficam no histórico.
+- **WhatsApp em imagem**: gera imagens no formato de tela de celular (1080 × 1920) com as
+  licitações abertas ou em andamento — número do edital, modalidade, data e horário,
+  objeto e equipe —, nas cores da modalidade. Listas longas viram várias imagens. Também
+  há imagem individual por licitação e, se preferir, o mesmo conteúdo em texto.
 - **Busca e filtros** por texto, modalidade, situação, responsável e período.
 - **Exportação .ics** da agenda (filtrada) para Outlook, Google Agenda, Thunderbird etc.
 - **Histórico** de alterações em cada licitação e **auditoria** geral (logins, cadastros,
@@ -52,6 +64,9 @@ As regras ficam em `licitacoes/perfis.py` (dicionário `PERMISSOES`) e podem ser
 efetivos.
 
 ## Instalação no servidor da intranet
+
+Ao atualizar uma instalação existente, rode de novo `pip install -r requirements.txt`
+(a imagem do WhatsApp usa a biblioteca Pillow). O banco é atualizado sozinho na partida.
 
 Requisito: Python 3.10 ou superior (Windows ou Linux). Não é preciso instalar banco de
 dados: os dados ficam em um arquivo SQLite na pasta `instance/`.
@@ -109,7 +124,9 @@ licitacoes/
   perfis.py              perfis, permissões, modalidades e situações
   auth.py                login, troca de senha e controle de acesso
   agenda.py              painel, calendário, cadastro, suspensão, WhatsApp e .ics
-  admin.py               usuários, servidores e auditoria
+  admin.py               usuários, servidores, afastamentos e auditoria
+  equipe.py              regras da equipe (efetivos, férias e afastamentos)
+  imagem.py              imagem para WhatsApp (fonte Inter em static/fontes, licença OFL)
   db.py                  esquema e acesso ao SQLite
   templates/, static/    telas
 tests/                   testes automatizados

@@ -9,7 +9,7 @@
 Cada equipe precisa de maioria efetiva: ao menos 2 dos 3 integrantes do quadro efetivo.</p>
 <div class="tabela-rolagem">
 <table>
-  <thead><tr><th>Nome</th><th>Matrícula</th><th>Vínculo</th><th>Escalas</th><th>Situação</th><th></th></tr></thead>
+  <thead><tr><th>Nome</th><th>Matrícula</th><th>Vínculo</th><th>Escalas</th><th>Férias / afastamento</th><th>Situação</th><th></th></tr></thead>
   <tbody>
   {% for s in servidores %}
     <tr class="{% if not s.ativo %}inativo{% endif %}">
@@ -17,11 +17,12 @@ Cada equipe precisa de maioria efetiva: ao menos 2 dos 3 integrantes do quadro e
       <td>{{ s.matricula or '—' }}</td>
       <td><span class="selo {{ 'selo-verde' if s.vinculo in efetivos else 'selo-cinza' }}">{{ vinculos[s.vinculo] }}</span></td>
       <td><a href="{{ url_for('agenda.lista', servidor=s.id) }}">{{ s.escalas }}</a></td>
+      <td>{% if s.afastado %}<span class="selo selo-laranja">{{ s.afastado }}</span>{% elif s.proximo_afastamento %}<small>{{ s.proximo_afastamento }}</small>{% else %}—{% endif %}</td>
       <td>{{ 'Ativo' if s.ativo else 'Inativo' }}</td>
-      <td><a href="{{ url_for('admin.servidor_form', id_=s.id) }}">Editar</a></td>
+      <td class="acoes"><a href="{{ url_for('admin.servidor_form', id_=s.id) }}">Editar</a> <a href="{{ url_for('admin.afastamentos', id_=s.id) }}">Férias / afastamentos</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="vazio">Nenhum servidor cadastrado. Cadastre os servidores antes de montar as equipes.</td></tr>
+    <tr><td colspan="7" class="vazio">Nenhum servidor cadastrado. Cadastre os servidores antes de montar as equipes.</td></tr>
   {% endfor %}
   </tbody>
 </table>

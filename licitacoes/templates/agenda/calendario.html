@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import estilo_modalidade, legenda_modalidades with context %}
 {% block titulo %}Calendário{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
@@ -19,8 +20,8 @@
       <td class="{% if dia.month != mes %}fora{% endif %} {% if dia == hoje %}hoje{% endif %}">
         <div class="numero">{{ dia.day }}</div>
         {% for e in eventos.get(dia.isoformat(), []) %}
-          <a class="evento selo-{{ STATUS.get(e.lic.status, 'cinza') }}" href="{{ url_for('agenda.detalhe', id_=e.lic.id) }}"
-             title="{{ e.lic.modalidade }} — {{ e.lic.objeto }} ({{ e.lic.status }})">{{ e.rotulo }}</a>
+          <a class="evento modalidade" style="{{ estilo_modalidade(e.lic.modalidade) }}" href="{{ url_for('agenda.detalhe', id_=e.lic.id) }}"
+             title="{{ e.lic.modalidade }} — {{ e.lic.objeto }} ({{ situacao(e.lic) }})"><span class="ponto selo-{{ STATUS.get(e.lic.status, 'cinza') }}"></span>{{ e.rotulo }}</a>
         {% endfor %}
       </td>
     {% endfor %}
@@ -29,5 +30,6 @@
   </tbody>
 </table>
 </div>
-<p class="legenda">{% for status, cor in STATUS.items() %}<span class="selo selo-{{ cor }}">{{ status }}</span> {% endfor %}</p>
+{{ legenda_modalidades(modalidades) }}
+<p class="legenda"><span class="sutil">Ponto = situação:</span> {% for status, cor in STATUS.items() %}<span class="selo selo-{{ cor }}">{{ status }}</span> {% endfor %}</p>
 {% endblock %}

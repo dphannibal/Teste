@@ -1,26 +1,52 @@
 {% extends 'base.html' %}
-{% block titulo %}Enviar pelo WhatsApp{% endblock %}
+{% block titulo %}WhatsApp{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
-  <h1>Licitações abertas — WhatsApp</h1>
-  <div class="acoes">
-    <button type="button" id="copiar">Copiar texto</button>
-    <a class="botao whatsapp" href="{{ link }}" target="_blank" rel="noopener">Abrir no WhatsApp</a>
-  </div>
+  <h1>{{ titulo }} — imagem para WhatsApp</h1>
+  {% if lic %}<div class="acoes"><a href="{{ url_for('agenda.detalhe', id_=lic.id) }}">Voltar à licitação</a></div>{% endif %}
 </div>
-<p class="sutil">{{ total }} licitação(ões) com edital publicado, remarcadas, em andamento, suspensas ou credenciamentos abertos.
-“Abrir no WhatsApp” abre o aplicativo ou o WhatsApp Web para você escolher o contato ou grupo.
-Se a lista for muito longa, use “Copiar texto” e cole na conversa.</p>
-<textarea id="texto" class="cartao mensagem" rows="24" readonly>{{ texto }}</textarea>
+<p class="sutil">{% if not lic %}{{ total }} licitação(ões) com edital publicado, remarcadas, em andamento, suspensas ou credenciamentos abertos. {% endif %}
+Imagem no formato de tela de celular. Baixe e envie no WhatsApp (ou WhatsApp Web) como foto.
+{% if imagens|length > 1 %}A lista foi dividida em {{ imagens|length }} imagens.{% endif %}</p>
+
+<div class="imagens-whatsapp">
+  {% for url in imagens %}
+  {% set nome = nome_arquivo ~ ('-' ~ loop.index if imagens|length > 1 else '') ~ '.png' %}
+  <figure class="cartao">
+    <img src="{{ url }}" alt="Imagem {{ loop.index }} de {{ imagens|length }} para WhatsApp" loading="lazy">
+    <figcaption class="acoes">
+      <a class="botao whatsapp" href="{{ url }}" download="{{ nome }}">Baixar imagem</a>
+      <button type="button" class="compartilhar" data-url="{{ url }}" data-nome="{{ nome }}" hidden>Compartilhar</button>
+    </figcaption>
+  </figure>
+  {% endfor %}
+</div>
+
+<details class="cartao">
+  <summary>Prefere enviar como texto?</summary>
+  <textarea id="texto" class="mensagem" rows="16" readonly>{{ texto }}</textarea>
+  <div class="acoes"><button type="button" id="copiar">Copiar texto</button></div>
+</details>
+
 <script>
-document.getElementById('copiar').addEventListener('click', function () {
-  var campo = document.getElementById('texto'), botao = this;
-  function ok() { botao.textContent = 'Copiado!'; setTimeout(function () { botao.textContent = 'Copiar texto'; }, 2000); }
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(campo.value).then(ok);
-  } else {  // intranet sem HTTPS
-    campo.select(); document.execCommand('copy'); ok();
-  }
-});
+(function () {
+  // O compartilhamento direto de arquivos só existe em HTTPS (ou no próprio servidor).
+  document.querySelectorAll('button.compartilhar').forEach(function (botao) {
+    if (!navigator.canShare) return;
+    botao.hidden = false;
+    botao.addEventListener('click', function () {
+      fetch(botao.dataset.url).then(function (r) { return r.blob(); }).then(function (blob) {
+        var arquivo = new File([blob], botao.dataset.nome, { type: 'image/png' });
+        if (navigator.canShare({ files: [arquivo] })) navigator.share({ files: [arquivo] });
+      });
+    });
+  });
+  document.getElementById('copiar').addEventListener('click', function () {
+    var campo = document.getElementById('texto'), botao = this;
+    function ok() { botao.textContent = 'Copiado!'; setTimeout(function () { botao.textContent = 'Copiar texto'; }, 2000); }
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(campo.value).then(ok);
+    else { campo.select(); document.execCommand('copy'); ok(); }
+  });
+})();
 </script>
 {% endblock %}

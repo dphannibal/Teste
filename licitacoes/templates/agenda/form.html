@@ -5,8 +5,9 @@
 <form method="post" class="cartao formulario" id="form-licitacao">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <div class="grade">
+    <label>Nº do edital<input name="numero_edital" value="{{ dados.numero_edital or '' }}" placeholder="Ex.: PE 007/2026, CE 075/2025">
+      <small>Obrigatório a partir da publicação. É o principal destaque no painel e na imagem.</small></label>
     <label>Nº do processo *<input name="numero_processo" required value="{{ dados.numero_processo or '' }}" placeholder="Ex.: 2026.001234"></label>
-    <label>Nº do edital<input name="numero_edital" value="{{ dados.numero_edital or '' }}" placeholder="Ex.: PE 015/2026"></label>
     <label>Modalidade *
       <select name="modalidade" id="modalidade" required>
         <option value="">Selecione…</option>
@@ -17,9 +18,10 @@
       <select name="status" id="status" required>
         {% for s in status_form %}<option {% if dados.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
       </select>
+      {% if atual and atual.status in ['Edital publicado', 'Remarcada', 'Suspensa', 'Em andamento'] %}<small>Suspensão e remarcação: botão “Suspender / remarcar” na tela da licitação.</small>{% endif %}
     </label>
     <label>Publicação do edital<input type="date" name="data_publicacao" value="{{ dados.data_publicacao or '' }}"></label>
-    <label class="so-sessao">Data e hora da sessão<input type="datetime-local" name="data_sessao" value="{{ dados.data_sessao or '' }}"></label>
+    <label class="so-sessao">Data e hora da sessão<input type="datetime-local" name="data_sessao" id="data_sessao" value="{{ dados.data_sessao or '' }}"></label>
     <label class="so-credenciamento">Vigência até
       <input type="date" name="vigencia_ate" value="{{ dados.vigencia_ate or '' }}">
       <small>Em branco: 1 ano após a publicação. Renove a cada ano pela tela da licitação.</small>
@@ -31,20 +33,27 @@
 
   <fieldset>
     <legend>Equipe</legend>
-    <p class="sutil">Pregoeiro ou agente de contratação e mais dois membros. Obrigatória fora da fase de planejamento.
-      A equipe não pode ter minoria de servidores efetivos: ao menos 2 dos 3 devem ser do quadro efetivo.</p>
+    <p class="sutil">Pregoeiro ou agente de contratação e dois membros (obrigatórios fora da fase de planejamento).
+      O terceiro membro é opcional. A equipe não pode ter minoria de servidores efetivos, e ninguém pode estar de férias ou afastado na data da sessão.</p>
     {% if not servidores %}<p class="aviso aviso-info">Nenhum servidor cadastrado.{% if pode('servidores') %} <a href="{{ url_for('admin.servidor_form') }}">Cadastre os servidores</a> para montar a equipe.{% else %} Peça a um gestor que cadastre os servidores.{% endif %}</p>{% endif %}
     <div class="grade">
-      {% for campo, rotulo in [('agente_id', 'Pregoeiro / agente de contratação'), ('membro1_id', 'Membro da equipe'), ('membro2_id', 'Membro da equipe')] %}
+      {% for campo, rotulo in funcoes.items() %}
       <label>{{ rotulo }}
         <select name="{{ campo }}" class="membro">
-          <option value="">—</option>
-          {% for s in servidores %}<option value="{{ s.id }}" data-efetivo="{{ 1 if s.vinculo in efetivos else 0 }}" {% if dados[campo]|string == s.id|string %}selected{% endif %}>{{ s.nome }}{% if s.vinculo not in efetivos %} (não efetivo){% endif %}{% if not s.ativo %} [inativo]{% endif %}</option>{% endfor %}
+          <option value="">{{ '— nenhum —' if campo == 'membro3_id' else '—' }}</option>
+          {% for s in servidores %}<option value="{{ s.id }}" data-efetivo="{{ 1 if s.vinculo in efetivos else 0 }}" data-afastamentos="{{ s.afastamentos or '' }}" {% if dados[campo]|string == s.id|string %}selected{% endif %}>{{ s.nome }}{% if s.vinculo not in efetivos %} (não efetivo){% endif %}{% if not s.ativo %} [inativo]{% endif %}</option>{% endfor %}
         </select>
       </label>
       {% endfor %}
     </div>
     <p class="aviso aviso-erro" id="alerta-equipe" hidden>A equipe ficaria com minoria de servidores efetivos. Substitua um dos membros não efetivos.</p>
+    <p class="aviso aviso-alerta" id="alerta-afastamento" hidden></p>
+    {% if pendentes %}
+    <div class="aviso aviso-alerta">
+      <p><strong>A sessão já está em andamento.</strong> Troque o membro impedido acima ou mantenha-o na equipe:</p>
+      <label class="opcao"><input type="checkbox" name="manter_impedidos" value="1"> Manter o membro impedido ({{ pendentes|map(attribute='nome')|join(', ') }}) — a decisão fica registrada no histórico</label>
+    </div>
+    {% endif %}
   </fieldset>
 
   <label>Objeto *<textarea name="objeto" rows="3" required>{{ dados.objeto or '' }}</textarea></label>
@@ -59,6 +68,7 @@
 (function () {
   var CRED = {{ credenciamento|tojson }}, STATUS_CRED = {{ status_credenciamento|tojson }};
   var modalidade = document.getElementById('modalidade'), status = document.getElementById('status');
+  var membros = document.querySelectorAll('select.membro'), sessao = document.getElementById('data_sessao');
   function ajustarModalidade() {
     var cred = modalidade.value === CRED;
     document.querySelectorAll('.so-sessao').forEach(function (e) { e.hidden = cred; });
@@ -67,17 +77,37 @@
       o.hidden = o.disabled = cred && STATUS_CRED.indexOf(o.value) < 0;
     });
     if (status.selectedOptions[0] && status.selectedOptions[0].disabled) status.value = STATUS_CRED[0];
+    conferirAfastamentos();
   }
   function conferirEquipe() {
-    var naoEfetivos = 0;
-    document.querySelectorAll('select.membro').forEach(function (s) {
+    var escolhidos = 0, naoEfetivos = 0;
+    membros.forEach(function (s) {
       var o = s.selectedOptions[0];
-      if (o && o.value && o.dataset.efetivo === '0') naoEfetivos++;
+      if (o && o.value) { escolhidos++; if (o.dataset.efetivo === '0') naoEfetivos++; }
     });
-    document.getElementById('alerta-equipe').hidden = naoEfetivos < 2;
+    document.getElementById('alerta-equipe').hidden = naoEfetivos * 2 <= Math.max(escolhidos, 3);
+  }
+  function br(d) { return d.split('-').reverse().join('/'); }
+  function conferirAfastamentos() {
+    var dia = modalidade.value !== CRED && sessao.value ? sessao.value.slice(0, 10) : '', avisos = [];
+    membros.forEach(function (s) {
+      var o = s.selectedOptions[0];
+      if (!dia || !o || !o.value || !o.dataset.afastamentos) return;
+      o.dataset.afastamentos.split(';').forEach(function (a) {
+        var p = a.split(':');
+        if (p[0] <= dia && dia <= p[1]) avisos.push(o.textContent.replace(/ \(.*$/, '') + ' — ' + p[2].toLowerCase() + ' de ' + br(p[0]) + ' a ' + br(p[1]));
+      });
+    });
+    var alerta = document.getElementById('alerta-afastamento');
+    alerta.hidden = !avisos.length;
+    alerta.textContent = 'Impedido na data da sessão: ' + avisos.join('; ') + '.';
   }
   modalidade.addEventListener('change', ajustarModalidade);
-  document.querySelectorAll('select.membro').forEach(function (s) { s.addEventListener('change', conferirEquipe); });
+  sessao.addEventListener('change', conferirAfastamentos);
+  membros.forEach(function (s) {
+    s.addEventListener('change', conferirEquipe);
+    s.addEventListener('change', conferirAfastamentos);
+  });
   ajustarModalidade(); conferirEquipe();
 })();
 </script>

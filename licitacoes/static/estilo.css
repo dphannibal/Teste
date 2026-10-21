@@ -147,3 +147,29 @@ table.calendario { table-layout: fixed; min-width: 720px; border: 1px solid var(
   body { background: #fff; }
   .cartao { border: 0; padding: 0; }
 }
+
+/* Cores por modalidade (--fundo / --destaque vêm de perfis.CORES_MODALIDADE) */
+tr.linha-modalidade td { background: var(--fundo); }
+tr.linha-modalidade td:first-child { border-left: 6px solid var(--destaque); }
+table.licitacoes { border-collapse: separate; border-spacing: 0 4px; background: transparent; }
+table.licitacoes td { border-bottom: 0; }
+.edital { font-weight: 800; font-size: 1.15rem; color: var(--destaque, var(--primaria)); text-decoration: none; letter-spacing: .01em; }
+a.edital:hover { text-decoration: underline; }
+.edital.grande { font-size: 1.9rem; }
+.processo { display: block; color: var(--sutil); font-size: .78rem; }
+.titulo-licitacao .modalidade { color: var(--destaque); font-weight: 600; font-size: 1.1rem; }
+td.equipe { font-size: .88rem; min-width: 190px; }
+.rotulo { color: var(--sutil); font-weight: 600; }
+.chip-modalidade { background: var(--fundo); border-left: 4px solid var(--destaque); color: var(--texto); padding: .1rem .5rem; border-radius: 4px; font-size: .78rem; }
+.alerta-forte { border-left: 4px solid var(--perigo); }
+.impedidos, .hoje { list-style: none; padding: 0; margin: 0; }
+.impedidos li, .hoje li { background: var(--fundo); border-left: 5px solid var(--destaque); padding: .5rem .75rem; border-radius: 4px; margin-bottom: .4rem; }
+.calendario .evento.modalidade { background: var(--fundo); color: var(--texto); border-left: 4px solid var(--destaque); }
+.calendario .evento .ponto { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; margin-right: .25rem; }
+
+/* Imagens para WhatsApp */
+.imagens-whatsapp { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 340px)); gap: 1rem; margin-bottom: 1.25rem; }
+.imagens-whatsapp figure { margin: 0; padding: .75rem; }
+.imagens-whatsapp img { width: 100%; aspect-ratio: 9 / 16; display: block; border-radius: 6px; border: 1px solid var(--borda); margin-bottom: .6rem; }
+details.cartao summary { cursor: pointer; font-weight: 600; }
+details.cartao textarea { margin: .75rem 0; }

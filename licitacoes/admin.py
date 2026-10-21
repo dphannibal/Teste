@@ -1,13 +1,16 @@
 """Administração de usuários e trilha de auditoria."""
 import re
 import secrets
+from datetime import date
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 from werkzeug.security import generate_password_hash
 
 from .auth import permissao
 from .db import get_db, registrar
-from .perfis import DESCRICAO_PERFIS, PERFIS, VINCULOS, VINCULOS_EFETIVOS
+from .perfis import (
+    DESCRICAO_PERFIS, PERFIS, STATUS_ABERTOS, TIPOS_AFASTAMENTO, VINCULOS, VINCULOS_EFETIVOS,
+)
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -141,7 +144,15 @@ def redefinir_senha(id_):
 def servidores():
     lista = get_db().execute(
         "SELECT s.*, (SELECT COUNT(*) FROM licitacoes l"
-        "             WHERE s.id IN (l.agente_id, l.membro1_id, l.membro2_id)) AS escalas"
+        "             WHERE s.id IN (l.agente_id, l.membro1_id, l.membro2_id, l.membro3_id))"
+        "             AS escalas,"
+        "       (SELECT a.tipo || ' até ' || strftime('%d/%m/%Y', a.fim) FROM afastamentos a"
+        "         WHERE a.servidor_id = s.id"
+        "           AND date('now', 'localtime') BETWEEN a.inicio AND a.fim) AS afastado,"
+        "       (SELECT a.tipo || ' a partir de ' || strftime('%d/%m/%Y', a.inicio)"
+        "          FROM afastamentos a WHERE a.servidor_id = s.id"
+        "           AND a.inicio > date('now', 'localtime') ORDER BY a.inicio LIMIT 1)"
+        "             AS proximo_afastamento"
         "  FROM servidores s ORDER BY s.ativo DESC, s.nome"
     ).fetchall()
     return render_template("admin/servidores.html", servidores=lista, vinculos=VINCULOS,
@@ -197,6 +208,90 @@ def servidor_form(id_):
 
     return render_template("admin/servidor_form.html", dados=dados, novo=atual is None,
                            vinculos=VINCULOS)
+
+
+def _licitacoes_afetadas(servidor_id, inicio, fim):
+    """Licitações abertas com sessão futura no período em que o servidor estará afastado."""
+    marcadores = ",".join("?" * len(STATUS_ABERTOS))
+    return get_db().execute(
+        "SELECT id, numero_edital, numero_processo, status, data_sessao FROM licitacoes"
+        " WHERE ? IN (agente_id, membro1_id, membro2_id, membro3_id)"
+        f"  AND status IN ({marcadores}) AND status != 'Suspensa'"
+        "   AND substr(data_sessao, 1, 10) BETWEEN max(?, date('now', 'localtime')) AND ?"
+        " ORDER BY data_sessao",
+        (servidor_id, *STATUS_ABERTOS, inicio, fim),
+    ).fetchall()
+
+
+@bp.route("/servidores/<int:id_>/afastamentos", methods=["GET", "POST"])
+@permissao("servidores")
+def afastamentos(id_):
+    """Férias, licenças e afastamentos: impedem a escala do servidor no período."""
+    conn = get_db()
+    servidor = conn.execute("SELECT * FROM servidores WHERE id = ?", (id_,)).fetchone()
+    if servidor is None:
+        abort(404)
+    dados = {"tipo": "Férias"}
+
+    if request.method == "POST":
+        dados = {c: request.form.get(c, "").strip()
+                 for c in ("tipo", "inicio", "fim", "observacao")}
+        erros = []
+        if dados["tipo"] not in TIPOS_AFASTAMENTO:
+            erros.append("Selecione o tipo de afastamento.")
+        try:
+            inicio = date.fromisoformat(dados["inicio"])
+            fim = date.fromisoformat(dados["fim"])
+            if fim < inicio:
+                erros.append("O fim do afastamento não pode ser anterior ao início.")
+        except ValueError:
+            erros.append("Informe as datas de início e fim.")
+
+        if erros:
+            for e in erros:
+                flash(e, "erro")
+        else:
+            conn.execute(
+                "INSERT INTO afastamentos (servidor_id, tipo, inicio, fim, observacao)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (id_, dados["tipo"], dados["inicio"], dados["fim"], dados["observacao"] or None),
+            )
+            periodo = f"{inicio:%d/%m/%Y} a {fim:%d/%m/%Y}"
+            registrar("Cadastro de afastamento", referencia=servidor["nome"],
+                      detalhes=f"{dados['tipo']}: {periodo}")
+            conn.commit()
+            flash(f"{dados['tipo']} de {servidor['nome']} registrado(a): {periodo}.", "sucesso")
+            afetadas = _licitacoes_afetadas(id_, dados["inicio"], dados["fim"])
+            if afetadas:
+                lista = ", ".join(l["numero_edital"] or l["numero_processo"] for l in afetadas)
+                flash(f"Atenção: {servidor['nome']} está escalado(a) em licitação com sessão "
+                      f"nesse período: {lista}. Troque o membro (ou, se já estiver em "
+                      "andamento, decida se o mantém) na edição da licitação.", "erro")
+            return redirect(url_for("admin.afastamentos", id_=id_))
+
+    lista = conn.execute(
+        "SELECT * FROM afastamentos WHERE servidor_id = ? ORDER BY inicio DESC", (id_,)
+    ).fetchall()
+    return render_template("admin/afastamentos.html", servidor=servidor, afastamentos=lista,
+                           dados=dados, tipos=TIPOS_AFASTAMENTO, hoje=date.today().isoformat())
+
+
+@bp.route("/afastamentos/<int:id_>/excluir", methods=["POST"])
+@permissao("servidores")
+def excluir_afastamento(id_):
+    conn = get_db()
+    afastamento = conn.execute(
+        "SELECT a.*, s.nome FROM afastamentos a JOIN servidores s ON s.id = a.servidor_id"
+        " WHERE a.id = ?", (id_,)
+    ).fetchone()
+    if afastamento is None:
+        abort(404)
+    conn.execute("DELETE FROM afastamentos WHERE id = ?", (id_,))
+    registrar("Exclusão de afastamento", referencia=afastamento["nome"],
+              detalhes=f"{afastamento['tipo']}: {afastamento['inicio']} a {afastamento['fim']}")
+    conn.commit()
+    flash("Afastamento excluído.", "sucesso")
+    return redirect(url_for("admin.afastamentos", id_=afastamento["servidor_id"]))
 
 
 @bp.route("/auditoria")

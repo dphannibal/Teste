@@ -1,18 +1,19 @@
 """Agenda, calendário e cadastro de licitações."""
 import calendar
 from datetime import date, datetime, timedelta
-from urllib.parse import quote
 
 from flask import (
     Blueprint, Response, abort, current_app, flash, g, redirect, render_template, request,
     url_for,
 )
 
+from . import equipe, imagem
 from .auth import permissao
 from .db import get_db, registrar
 from .perfis import (
-    CREDENCIAMENTO, FUNCOES_EQUIPE, MODALIDADES, STATUS, STATUS_ABERTOS,
-    STATUS_CREDENCIAMENTO, STATUS_DIVULGAVEIS, VINCULOS_EFETIVOS,
+    CORES_MODALIDADE, CREDENCIAMENTO, EQUIPE_OBRIGATORIA, FUNCOES_EQUIPE, MODALIDADES,
+    OCORRENCIAS, STATUS, STATUS_ABERTOS, STATUS_CREDENCIAMENTO, STATUS_DIVULGAVEIS,
+    VINCULOS_EFETIVOS,
 )
 
 bp = Blueprint("agenda", __name__)
@@ -20,7 +21,7 @@ bp = Blueprint("agenda", __name__)
 MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho",
          "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
-EQUIPE = list(FUNCOES_EQUIPE)
+EQUIPE = equipe.EQUIPE
 
 CAMPOS = ["numero_processo", "numero_edital", "modalidade", "objeto", "data_publicacao",
           "data_sessao", "vigencia_ate", "local", *EQUIPE, "valor_estimado", "status",
@@ -44,17 +45,40 @@ ROTULOS = {
 # Situações só alcançadas pela ação "Suspender / remarcar".
 STATUS_DA_ACAO_SUSPENDER = {"Suspensa", "Remarcada"}
 
+# Situações em que a sessão ainda não foi aberta, mas o edital já saiu.
+STATUS_ANTES_DA_SESSAO = ["Edital publicado", "Remarcada", "Suspensa"]
+
 # Modalidades sem sessão pública conduzida por pregoeiro / agente.
 SEM_EQUIPE_OBRIGATORIA = {"Inexigibilidade"}
 
 CONSULTA_BASE = """
     SELECT l.*,
-           a.nome AS agente_nome, m1.nome AS membro1_nome, m2.nome AS membro2_nome
+           a.nome AS agente_nome, m1.nome AS membro1_nome, m2.nome AS membro2_nome,
+           m3.nome AS membro3_nome
       FROM licitacoes l
       LEFT JOIN servidores a  ON a.id  = l.agente_id
       LEFT JOIN servidores m1 ON m1.id = l.membro1_id
       LEFT JOIN servidores m2 ON m2.id = l.membro2_id
+      LEFT JOIN servidores m3 ON m3.id = l.membro3_id
 """
+
+
+def situacao(lic):
+    """Situação por extenso, distinguindo as fases de suspensão e remarcação."""
+    status, ocorrencia = lic["status"], lic["ocorrencia"]
+    if status == "Suspensa":
+        return "Suspensa — sessão não aberta"
+    if status == "Remarcada" and ocorrencia == "remarcada_retificacao":
+        return "Remarcada — edital retificado"
+    if status == "Em andamento" and lic["suspensa_em"]:
+        return "Em andamento — suspensa p/ análise documental"
+    if status == "Em andamento" and ocorrencia == "continuacao":
+        return "Em andamento — continuação"
+    return status
+
+
+def identificacao(lic):
+    return lic["numero_edital"] or f"Processo {lic['numero_processo']}"
 
 
 def _buscar(id_):
@@ -62,16 +86,6 @@ def _buscar(id_):
     if lic is None:
         abort(404)
     return lic
-
-
-def _servidores(incluir=()):
-    """Servidores ativos, mais os já escalados na licitação (mesmo se inativos)."""
-    ids = [i for i in incluir if i] or [0]
-    return get_db().execute(
-        f"SELECT * FROM servidores WHERE ativo = 1 OR id IN ({','.join('?' * len(ids))})"
-        " ORDER BY nome",
-        ids,
-    ).fetchall()
 
 
 def somar_um_ano(dia):
@@ -97,25 +111,8 @@ def _ler_data(texto, com_hora):
     return dt.strftime("%Y-%m-%dT%H:%M" if com_hora else "%Y-%m-%d")
 
 
-def problemas_da_equipe(ids, servidores):
-    """Regras de composição da equipe. Retorna a lista de problemas encontrados."""
-    por_id = {s["id"]: s for s in servidores}
-    escalados = [por_id[i] for i in ids if i in por_id]
-    problemas = []
-    if len({s["id"] for s in escalados}) < len(escalados):
-        problemas.append("Um mesmo servidor foi escalado em mais de uma função na equipe.")
-    nao_efetivos = [s for s in escalados if s["vinculo"] not in VINCULOS_EFETIVOS]
-    # Equipe de 3: com 2 ou mais não efetivos, os efetivos ficam em minoria.
-    if len(nao_efetivos) >= 2:
-        nomes = " e ".join(s["nome"] for s in nao_efetivos)
-        problemas.append(
-            f"A equipe não pode ter minoria de servidores efetivos: {nomes} não são "
-            "efetivos. Ao menos 2 dos 3 integrantes devem ser do quadro efetivo."
-        )
-    return problemas
-
-
 def _validar(form, atual=None):
+    """Retorna (dados, erros, impedidos pendentes de decisão)."""
     dados = {c: form.get(c, "").strip() for c in CAMPOS}
     erros = []
 
@@ -134,6 +131,8 @@ def _validar(form, atual=None):
         atual is None or atual["status"] != dados["status"]
     ):
         erros.append("Para suspender ou remarcar a sessão, use o botão “Suspender / remarcar”.")
+    if not dados["numero_edital"] and dados["status"] != "Em planejamento":
+        erros.append("Informe o número do edital (ex.: PE 007/2026).")
 
     for campo, com_hora in (("data_publicacao", False), ("data_sessao", True),
                             ("vigencia_ate", False)):
@@ -171,8 +170,7 @@ def _validar(form, atual=None):
     except ValueError:
         erros.append("Valor estimado inválido. Use, por exemplo, 150.000,00.")
 
-    atuais = [atual[c] for c in EQUIPE] if atual else []
-    servidores = _servidores(atuais)
+    servidores = equipe.servidores([atual[c] for c in EQUIPE] if atual else [])
     validos = {s["id"] for s in servidores}
     for campo in EQUIPE:
         valor = dados[campo]
@@ -183,15 +181,22 @@ def _validar(form, atual=None):
     ids = [dados[c] for c in EQUIPE if dados[c]]
     exige_equipe = (dados["status"] != "Em planejamento"
                     and dados["modalidade"] not in SEM_EQUIPE_OBRIGATORIA)
-    if exige_equipe and len(ids) < len(EQUIPE):
-        erros.append("Informe a equipe completa: pregoeiro / agente de contratação e dois "
-                     "membros.")
-    erros += problemas_da_equipe(ids, servidores)
+    if exige_equipe and not all(dados[c] for c in EQUIPE_OBRIGATORIA):
+        erros.append("Informe a equipe: pregoeiro / agente de contratação e dois membros.")
+    erros += equipe.problemas(ids, servidores)
+
+    mantidos = equipe.ler_mantidos(atual["impedimentos_mantidos"] if atual else "")
+    erros_imp, pendentes, mantidos = equipe.verificar(
+        ids, dados["data_sessao"], dados["status"] == "Em andamento", mantidos,
+        manter=bool(form.get("manter_impedidos")),
+    )
+    erros += erros_imp
+    dados["impedimentos_mantidos"] = ",".join(map(str, sorted(mantidos))) or None
 
     for campo in ("numero_edital", "local", "observacoes"):
         dados[campo] = dados[campo] or None
 
-    return dados, erros
+    return dados, erros, pendentes
 
 
 def _filtrar(args):
@@ -208,7 +213,7 @@ def _filtrar(args):
         condicoes.append("l.status = ?")
         params.append(args["status"])
     if args.get("servidor", "").isdigit():
-        condicoes.append("? IN (l.agente_id, l.membro1_id, l.membro2_id)")
+        condicoes.append("? IN (l.agente_id, l.membro1_id, l.membro2_id, l.membro3_id)")
         params.append(int(args["servidor"]))
     if args.get("de"):
         condicoes.append("l.data_sessao >= ?")
@@ -224,6 +229,35 @@ def _em(lista):
     return ",".join("?" * len(lista))
 
 
+def _impedimentos_abertos():
+    """Integrantes afastados na data de sessões futuras ainda não decididas."""
+    conn = get_db()
+    linhas = conn.execute(
+        CONSULTA_BASE.replace("SELECT l.*,", "SELECT l.*, af.id AS afastamento_id,"
+                              " af.tipo, af.inicio, af.fim, sv.nome,")
+        + " JOIN afastamentos af ON af.servidor_id IN"
+          "      (l.agente_id, l.membro1_id, l.membro2_id, l.membro3_id)"
+          "  AND substr(l.data_sessao, 1, 10) BETWEEN af.inicio AND af.fim"
+          " JOIN servidores sv ON sv.id = af.servidor_id"
+        f" WHERE l.status IN ({_em(STATUS_ABERTOS)}) AND l.status != 'Suspensa'"
+          "   AND substr(l.data_sessao, 1, 10) >= ?"
+          " ORDER BY l.data_sessao",
+        (*STATUS_ABERTOS, date.today().isoformat()),
+    ).fetchall()
+    return [l for l in linhas
+            if l["afastamento_id"] not in equipe.ler_mantidos(l["impedimentos_mantidos"])]
+
+
+@bp.app_template_global()
+def cor_modalidade(modalidade):
+    return CORES_MODALIDADE.get(modalidade, ("#ffffff", "#4b5563"))
+
+
+@bp.app_context_processor
+def _globais():
+    return {"situacao": situacao, "OCORRENCIAS": OCORRENCIAS}
+
+
 @bp.route("/")
 @permissao("ver")
 def painel():
@@ -235,12 +269,14 @@ def painel():
     # Sem limite de prazo: há editais publicados com bem mais de 30 dias de antecedência.
     proximas = conn.execute(
         CONSULTA_BASE + f" WHERE l.data_sessao >= ? AND l.status IN ({_em(com_sessao)})"
-        " ORDER BY l.data_sessao",
+        " AND l.suspensa_em IS NULL ORDER BY l.data_sessao",
         (agora, *com_sessao),
     ).fetchall()
     sessoes_hoje = [l for l in proximas if l["data_sessao"].startswith(hoje.isoformat())]
     suspensas = conn.execute(
-        CONSULTA_BASE + " WHERE l.status = 'Suspensa' ORDER BY l.suspensa_em"
+        CONSULTA_BASE + " WHERE l.status = 'Suspensa'"
+        " OR (l.status = 'Em andamento' AND l.suspensa_em IS NOT NULL)"
+        " ORDER BY l.status = 'Suspensa', l.suspensa_em"
     ).fetchall()
     credenciamentos = conn.execute(
         CONSULTA_BASE + " WHERE l.modalidade = ? AND l.status = 'Em andamento'"
@@ -249,18 +285,21 @@ def painel():
     ).fetchall()
     atrasadas = conn.execute(
         CONSULTA_BASE + f" WHERE l.data_sessao < ? AND l.status IN ({_em(com_sessao)})"
-        " ORDER BY l.data_sessao",
+        " AND l.suspensa_em IS NULL ORDER BY l.data_sessao",
         (agora, *com_sessao),
     ).fetchall()
     contagem = dict(conn.execute(
         "SELECT status, COUNT(*) FROM licitacoes GROUP BY status"
     ).fetchall())
+    modalidades_em_uso = sorted({l["modalidade"] for l in (*proximas, *suspensas, *atrasadas)},
+                                key=MODALIDADES.index)
 
     return render_template(
         "agenda/painel.html", proximas=proximas, sessoes_hoje=sessoes_hoje,
         suspensas=suspensas, credenciamentos=credenciamentos, atrasadas=atrasadas,
-        contagem=contagem, hoje=hoje.isoformat(),
+        impedidos=_impedimentos_abertos(), contagem=contagem, hoje=hoje.isoformat(),
         alerta_renovacao=(hoje + timedelta(days=30)).isoformat(),
+        modalidades_em_uso=modalidades_em_uso,
     )
 
 
@@ -286,10 +325,10 @@ def calendario():
         (inicio, fim, CREDENCIAMENTO, inicio, fim),
     ):
         if lic["modalidade"] == CREDENCIAMENTO:
-            dia, rotulo = lic["vigencia_ate"], f"Renovar {lic['numero_edital'] or lic['numero_processo']}"
+            dia, rotulo = lic["vigencia_ate"], f"Renovar {identificacao(lic)}"
         else:
             dia = lic["data_sessao"][:10]
-            rotulo = f"{lic['data_sessao'][11:16]} {lic['numero_edital'] or lic['numero_processo']}"
+            rotulo = f"{lic['data_sessao'][11:16]} {identificacao(lic)}"
         eventos.setdefault(dia, []).append({"lic": lic, "rotulo": rotulo})
 
     anterior = date(ano, mes, 1) - timedelta(days=1)
@@ -297,7 +336,7 @@ def calendario():
     return render_template(
         "agenda/calendario.html",
         semanas=semanas, eventos=eventos, ano=ano, mes=mes, nome_mes=MESES[mes - 1],
-        hoje=hoje, anterior=anterior, seguinte=seguinte,
+        hoje=hoje, anterior=anterior, seguinte=seguinte, modalidades=MODALIDADES,
     )
 
 
@@ -311,18 +350,18 @@ def lista():
     ).fetchall()
     return render_template(
         "agenda/lista.html", licitacoes=licitacoes, modalidades=MODALIDADES,
-        servidores=_servidores(), filtros=request.args,
+        servidores=equipe.servidores(), filtros=request.args,
     )
 
 
-def _render_form(dados, titulo, atual=None):
+def _render_form(dados, titulo, atual=None, pendentes=()):
     return render_template(
-        "agenda/form.html", dados=dados, titulo=titulo, atual=atual,
-        modalidades=MODALIDADES, servidores=_servidores([dados.get(c) for c in EQUIPE]),
+        "agenda/form.html", dados=dados, titulo=titulo, atual=atual, pendentes=pendentes,
+        modalidades=MODALIDADES, servidores=equipe.servidores([dados.get(c) for c in EQUIPE]),
         status_form=[s for s in STATUS if s not in STATUS_DA_ACAO_SUSPENDER
                      or (atual and atual["status"] == s)],
         status_credenciamento=STATUS_CREDENCIAMENTO, credenciamento=CREDENCIAMENTO,
-        efetivos=VINCULOS_EFETIVOS,
+        efetivos=VINCULOS_EFETIVOS, funcoes=FUNCOES_EQUIPE,
     )
 
 
@@ -330,25 +369,27 @@ def _render_form(dados, titulo, atual=None):
 @permissao("criar")
 def nova():
     dados = {"status": "Em planejamento"}
+    pendentes = []
     if request.method == "POST":
-        dados, erros = _validar(request.form)
+        dados, erros, pendentes = _validar(request.form)
         if erros:
             for e in erros:
                 flash(e, "erro")
         else:
             conn = get_db()
+            colunas = [*CAMPOS, "impedimentos_mantidos"]
             cur = conn.execute(
-                f"INSERT INTO licitacoes ({', '.join(CAMPOS)}, criado_por)"
-                f" VALUES ({_em(CAMPOS)}, ?)",
-                (*[dados[c] for c in CAMPOS], g.usuario["id"]),
+                f"INSERT INTO licitacoes ({', '.join(colunas)}, criado_por)"
+                f" VALUES ({_em(colunas)}, ?)",
+                (*[dados[c] for c in colunas], g.usuario["id"]),
             )
-            registrar("Cadastro de licitação", referencia=dados["numero_processo"],
+            registrar("Cadastro de licitação", referencia=identificacao(dados),
                       licitacao_id=cur.lastrowid)
             conn.commit()
             flash("Licitação cadastrada.", "sucesso")
             return redirect(url_for("agenda.detalhe", id_=cur.lastrowid))
 
-    return _render_form(dados, "Nova licitação")
+    return _render_form(dados, "Nova licitação", pendentes=pendentes)
 
 
 @bp.route("/licitacoes/<int:id_>")
@@ -363,14 +404,17 @@ def detalhe(id_):
         (id_,),
     ).fetchall()
     ids = [lic[c] for c in EQUIPE]
-    equipe = {s["id"]: s for s in _servidores(ids)}
-    # A escala pode ter ficado irregular depois (ex.: mudança de vínculo de um servidor).
-    alertas_equipe = problemas_da_equipe([i for i in ids if i], list(equipe.values()))
+    escalados = {s["id"]: s for s in equipe.servidores(ids)}
+    # A escala pode ter ficado irregular depois (mudança de vínculo, férias lançadas...).
+    alertas = equipe.problemas([i for i in ids if i], list(escalados.values()))
+    if lic["status"] in STATUS_ABERTOS and lic["status"] != "Suspensa":
+        alertas += equipe.verificar(
+            ids, lic["data_sessao"], lic["status"] == "Em andamento",
+            equipe.ler_mantidos(lic["impedimentos_mantidos"]), manter=False)[0]
     return render_template(
-        "agenda/detalhe.html", lic=lic, historico=historico, equipe=equipe,
-        alertas_equipe=alertas_equipe, credenciamento=CREDENCIAMENTO, efetivos=VINCULOS_EFETIVOS,
-        pode_suspender=_pode_suspender(lic),
-        link_whatsapp=_link_whatsapp(_texto_whatsapp([lic])),
+        "agenda/detalhe.html", lic=lic, historico=historico, escalados=escalados,
+        alertas_equipe=alertas, credenciamento=CREDENCIAMENTO, efetivos=VINCULOS_EFETIVOS,
+        funcoes=FUNCOES_EQUIPE, pode_suspender=bool(_ocorrencias_possiveis(lic)),
     )
 
 
@@ -379,24 +423,31 @@ def detalhe(id_):
 def editar(id_):
     lic = _buscar(id_)
     dados = dict(lic)
+    pendentes = []
     if request.method == "POST":
-        dados, erros = _validar(request.form, lic)
+        dados, erros, pendentes = _validar(request.form, lic)
         if erros:
             for e in erros:
                 flash(e, "erro")
         else:
             alteracoes = _descrever_alteracoes(lic, dados)
+            novos_mantidos = (equipe.ler_mantidos(dados["impedimentos_mantidos"])
+                              - equipe.ler_mantidos(lic["impedimentos_mantidos"]))
+            if novos_mantidos:
+                alteracoes.append("Mantido membro impedido (sessão em andamento)")
             if alteracoes:
                 conn = get_db()
                 conn.execute(
                     f"UPDATE licitacoes SET {', '.join(c + ' = ?' for c in CAMPOS)},"
+                    " impedimentos_mantidos = ?,"
                     " atualizado_em = datetime('now', 'localtime') WHERE id = ?",
-                    (*[dados[c] for c in CAMPOS], id_),
+                    (*[dados[c] for c in CAMPOS], dados["impedimentos_mantidos"], id_),
                 )
-                if lic["status"] == "Suspensa" and dados["status"] != "Suspensa":
-                    conn.execute("UPDATE licitacoes SET suspensa_em = NULL,"
+                if lic["status"] != dados["status"]:
+                    # Suspensão e remarcação valem só para a fase em que foram registradas.
+                    conn.execute("UPDATE licitacoes SET suspensa_em = NULL, ocorrencia = NULL,"
                                  " motivo_suspensao = NULL WHERE id = ?", (id_,))
-                registrar("Alteração de licitação", referencia=dados["numero_processo"],
+                registrar("Alteração de licitação", referencia=identificacao(dados),
                           detalhes="; ".join(alteracoes), licitacao_id=id_)
                 conn.commit()
                 flash("Licitação atualizada.", "sucesso")
@@ -404,7 +455,7 @@ def editar(id_):
                 flash("Nenhuma alteração foi feita.", "info")
             return redirect(url_for("agenda.detalhe", id_=id_))
 
-    return _render_form(dados, f"Editar licitação {lic['numero_processo']}", lic)
+    return _render_form(dados, f"Editar {identificacao(lic)}", lic, pendentes)
 
 
 def _formatar(valor):
@@ -434,38 +485,67 @@ def _descrever_alteracoes(antes, depois):
     return alteracoes
 
 
-def _pode_suspender(lic):
-    return lic["modalidade"] != CREDENCIAMENTO and lic["status"] in STATUS_ABERTOS
+def _ocorrencias_possiveis(lic):
+    """Suspensões e remarcações cabíveis conforme a sessão já tenha sido aberta ou não."""
+    if lic["modalidade"] == CREDENCIAMENTO:
+        return {}
+    if lic["status"] in STATUS_ANTES_DA_SESSAO:
+        fase = "antes"
+    elif lic["status"] == "Em andamento":
+        fase = "andamento"
+    else:
+        return {}
+    return {k: v for k, v in OCORRENCIAS.items() if v["fase"] == fase}
 
 
 @bp.route("/licitacoes/<int:id_>/suspender", methods=["GET", "POST"])
 @permissao("suspender")
 def suspender(id_):
-    """Registra a suspensão sem data definida ou a remarcação com nova data e hora."""
+    """Registra suspensão ou remarcação, antes da abertura ou com a sessão em andamento."""
     lic = _buscar(id_)
-    if not _pode_suspender(lic):
+    opcoes = _ocorrencias_possiveis(lic)
+    if not opcoes:
         abort(400, "Esta licitação não pode ser suspensa ou remarcada na situação atual.")
 
     agora = datetime.now().strftime("%Y-%m-%dT%H:%M")
-    dados = {"acao": "suspender", "suspensa_em": agora}
+    dados = {"tipo": next(iter(opcoes)), "suspensa_em": agora}
+    pendentes = []
     if request.method == "POST":
         dados = {c: request.form.get(c, "").strip()
-                 for c in ("acao", "suspensa_em", "nova_data", "motivo")}
+                 for c in ("tipo", "suspensa_em", "nova_data", "data_retificacao", "motivo")}
         erros = []
-        if dados["acao"] == "suspender":
+        tipo = opcoes.get(dados["tipo"])
+        quando = None
+        if tipo is None:
+            erros.append("Escolha o que aconteceu com a sessão.")
+        elif tipo["campo"] == "suspensa_em":
             try:
                 quando = _ler_data(dados["suspensa_em"], com_hora=True)
             except ValueError:
                 erros.append("Informe a data e a hora da suspensão.")
-        elif dados["acao"] == "remarcar":
+        else:
             try:
                 quando = _ler_data(dados["nova_data"], com_hora=True)
                 if quando <= agora:
                     erros.append("A nova data e hora da sessão deve ser futura.")
             except ValueError:
                 erros.append("Informe a nova data e a hora da sessão.")
-        else:
-            erros.append("Escolha entre suspender ou remarcar.")
+        if dados["tipo"] == "remarcada_retificacao" and dados["data_retificacao"]:
+            try:
+                dados["data_retificacao"] = _ler_data(dados["data_retificacao"], com_hora=False)
+            except ValueError:
+                erros.append("Data da retificação inválida.")
+
+        mantidos = equipe.ler_mantidos(lic["impedimentos_mantidos"])
+        if tipo and tipo["campo"] == "nova_data" and quando and not erros:
+            erros_imp, pendentes, mantidos = equipe.verificar(
+                [lic[c] for c in EQUIPE], quando, tipo["fase"] == "andamento", mantidos,
+                manter=bool(request.form.get("manter_impedidos")),
+            )
+            if erros_imp and tipo["fase"] == "antes":
+                erros_imp = [erros_imp[0].replace("Troque o membro da equipe.",
+                             "Troque o membro pela edição da licitação antes de remarcar.")]
+            erros += erros_imp
 
         if erros:
             for e in erros:
@@ -473,33 +553,39 @@ def suspender(id_):
         else:
             conn = get_db()
             motivo = dados["motivo"] or None
-            if dados["acao"] == "suspender":
+            if tipo["campo"] == "suspensa_em":
+                novo_status = "Suspensa" if tipo["fase"] == "antes" else "Em andamento"
                 conn.execute(
-                    "UPDATE licitacoes SET status = 'Suspensa', suspensa_em = ?,"
+                    "UPDATE licitacoes SET status = ?, ocorrencia = ?, suspensa_em = ?,"
                     " motivo_suspensao = ?, atualizado_em = datetime('now', 'localtime')"
                     " WHERE id = ?",
-                    (quando, motivo, id_),
+                    (novo_status, dados["tipo"], quando, motivo, id_),
                 )
-                acao = "Sessão suspensa sem data definida"
                 detalhes = f"Suspensa em {_formatar(quando)}"
             else:
+                novo_status = "Remarcada" if tipo["fase"] == "antes" else "Em andamento"
                 conn.execute(
-                    "UPDATE licitacoes SET status = 'Remarcada', data_sessao = ?,"
-                    " suspensa_em = NULL, motivo_suspensao = NULL,"
+                    "UPDATE licitacoes SET status = ?, ocorrencia = ?, data_sessao = ?,"
+                    " suspensa_em = NULL, motivo_suspensao = NULL, impedimentos_mantidos = ?,"
                     " atualizado_em = datetime('now', 'localtime') WHERE id = ?",
-                    (quando, id_),
+                    (novo_status, dados["tipo"], quando,
+                     ",".join(map(str, sorted(mantidos))) or None, id_),
                 )
-                acao = "Sessão remarcada"
                 detalhes = f"De {_formatar(lic['data_sessao'])} para {_formatar(quando)}"
+                if dados["tipo"] == "remarcada_retificacao" and dados["data_retificacao"]:
+                    detalhes += f". Edital retificado em {_formatar(dados['data_retificacao'])}"
+            if mantidos - equipe.ler_mantidos(lic["impedimentos_mantidos"]):
+                detalhes += ". Mantido membro impedido"
             if motivo:
                 detalhes += f". Motivo: {motivo}"
-            registrar(acao, referencia=lic["numero_processo"], detalhes=detalhes,
+            registrar(tipo["rotulo"], referencia=identificacao(lic), detalhes=detalhes,
                       licitacao_id=id_)
             conn.commit()
-            flash(f"{acao}.", "sucesso")
+            flash(f"{tipo['rotulo']}: registrado.", "sucesso")
             return redirect(url_for("agenda.detalhe", id_=id_))
 
-    return render_template("agenda/suspender.html", lic=lic, dados=dados)
+    return render_template("agenda/suspender.html", lic=lic, dados=dados, opcoes=opcoes,
+                           pendentes=pendentes)
 
 
 @bp.route("/licitacoes/<int:id_>/renovar", methods=["POST"])
@@ -514,7 +600,7 @@ def renovar(id_):
     conn = get_db()
     conn.execute("UPDATE licitacoes SET vigencia_ate = ?,"
                  " atualizado_em = datetime('now', 'localtime') WHERE id = ?", (nova, id_))
-    registrar("Renovação do credenciamento", referencia=lic["numero_processo"],
+    registrar("Renovação do credenciamento", referencia=identificacao(lic),
               detalhes=f"Vigência: {_formatar(lic['vigencia_ate'])} → {_formatar(nova)}",
               licitacao_id=id_)
     conn.commit()
@@ -528,65 +614,87 @@ def excluir(id_):
     lic = _buscar(id_)
     conn = get_db()
     conn.execute("DELETE FROM licitacoes WHERE id = ?", (id_,))
-    registrar("Exclusão de licitação", referencia=lic["numero_processo"],
+    registrar("Exclusão de licitação", referencia=identificacao(lic),
               detalhes=f"{lic['modalidade']} — {lic['objeto'][:200]}")
     conn.commit()
-    flash(f"Licitação {lic['numero_processo']} excluída.", "sucesso")
+    flash(f"Licitação {identificacao(lic)} excluída.", "sucesso")
     return redirect(url_for("agenda.lista"))
 
 
-def _texto_whatsapp(licitacoes, titulo=None):
-    """Texto formatado para o WhatsApp (*negrito*, _itálico_)."""
-    def quando(valor):
-        return datetime.fromisoformat(valor).strftime("%d/%m/%Y às %H:%M")
+def _abertas():
+    """Licitações abertas ou em andamento, para divulgação."""
+    return get_db().execute(
+        CONSULTA_BASE + f" WHERE l.status IN ({_em(STATUS_DIVULGAVEIS)})"
+        # Primeiro as sessões agendadas, depois as suspensas e, por fim, os credenciamentos.
+        " ORDER BY l.modalidade = ?, (l.status = 'Suspensa' OR l.suspensa_em IS NOT NULL),"
+        " COALESCE(l.data_sessao, l.vigencia_ate)",
+        (*STATUS_DIVULGAVEIS, CREDENCIAMENTO),
+    ).fetchall()
 
-    partes = []
-    if titulo:
-        partes.append(f"*{titulo}*\n_Atualizado em {datetime.now():%d/%m/%Y às %H:%M}_")
+
+def _texto_whatsapp(licitacoes):
+    """Mesmo conteúdo da imagem, como texto (*negrito*), para colar se preferir."""
+    linhas = [f"*Licitações abertas — {current_app.config['NOME_ORGAO']}*",
+              f"_Atualizado em {datetime.now():%d/%m/%Y às %H:%M}_"]
     for lic in licitacoes:
-        nome = f"{lic['modalidade']} {lic['numero_edital'] or ''}".strip()
-        linhas = [f"📌 *{nome}*", f"Processo: {lic['numero_processo']}",
-                  f"Objeto: {lic['objeto']}"]
-        if lic["modalidade"] == CREDENCIAMENTO:
-            linhas.append("🟢 Credenciamento aberto — inscrições a qualquer tempo")
-            if lic["vigencia_ate"]:
-                linhas.append(f"Vigência até {_formatar(lic['vigencia_ate'])}")
-        elif lic["status"] == "Suspensa":
-            linhas.append("⏸️ *SUSPENSA* — sem nova data definida")
-            if lic["suspensa_em"]:
-                linhas.append(f"Suspensa em {quando(lic['suspensa_em'])}")
-        elif lic["status"] == "Remarcada":
-            linhas.append(f"🔁 *REMARCADA* para {quando(lic['data_sessao'])}")
-        elif lic["data_sessao"]:
-            linhas.append(f"🗓️ Sessão: {quando(lic['data_sessao'])}")
-        if lic["local"]:
-            linhas.append(f"📍 {lic['local']}")
-        if lic["status"] not in STATUS_DA_ACAO_SUSPENDER and lic["modalidade"] != CREDENCIAMENTO:
-            linhas.append(f"Situação: {lic['status']}")
-        partes.append("\n".join(linhas))
-    if titulo and not licitacoes:
-        partes.append("Não há licitações abertas no momento.")
-    return "\n\n".join(partes)
+        bloco = imagem.conteudo(lic)
+        linhas.append("")
+        linhas.append(f"*{bloco['titulo']}* — {lic['modalidade']}")
+        linhas.append(bloco["quando"])
+        linhas.append(f"Objeto: {lic['objeto']}")
+        linhas += bloco["equipe"]
+    if not licitacoes:
+        linhas.append("\nNão há licitações abertas no momento.")
+    return "\n".join(linhas)
 
 
-def _link_whatsapp(texto):
-    # Abre o WhatsApp (aplicativo ou Web) para o usuário escolher o contato ou grupo.
-    return "https://wa.me/?text=" + quote(texto)
+def _paginas(licitacoes):
+    return imagem.paginar([imagem.conteudo(l) for l in licitacoes])
 
 
 @bp.route("/licitacoes/whatsapp")
 @permissao("ver")
 def whatsapp():
-    """Licitações abertas ou em andamento, prontas para enviar pelo WhatsApp."""
-    licitacoes = get_db().execute(
-        CONSULTA_BASE + f" WHERE l.status IN ({_em(STATUS_DIVULGAVEIS)})"
-        " ORDER BY l.modalidade = ?, COALESCE(l.data_sessao, l.vigencia_ate)",
-        (*STATUS_DIVULGAVEIS, CREDENCIAMENTO),
-    ).fetchall()
-    titulo = f"Licitações abertas — {current_app.config['NOME_ORGAO']}"
-    texto = _texto_whatsapp(licitacoes, titulo)
-    return render_template("agenda/whatsapp.html", texto=texto, total=len(licitacoes),
-                           link=_link_whatsapp(texto))
+    """Imagens no formato de tela de celular com as licitações abertas ou em andamento."""
+    licitacoes = _abertas()
+    total = len(_paginas(licitacoes))
+    imagens = [url_for("agenda.whatsapp_imagem", pagina=n, v=datetime.now().strftime("%H%M%S"))
+               for n in range(1, total + 1)]
+    return render_template("agenda/whatsapp.html", imagens=imagens, total=len(licitacoes),
+                           texto=_texto_whatsapp(licitacoes), titulo="Licitações abertas",
+                           nome_arquivo="licitacoes-abertas")
+
+
+@bp.route("/licitacoes/whatsapp/<int:pagina>.png")
+@permissao("ver")
+def whatsapp_imagem(pagina):
+    paginas = _paginas(_abertas())
+    if not 1 <= pagina <= len(paginas):
+        abort(404)
+    png = imagem.desenhar(paginas[pagina - 1], pagina, len(paginas),
+                          "Licitações abertas", current_app.config["NOME_ORGAO"])
+    return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
+
+
+@bp.route("/licitacoes/<int:id_>/whatsapp")
+@permissao("ver")
+def whatsapp_licitacao(id_):
+    lic = _buscar(id_)
+    return render_template(
+        "agenda/whatsapp.html", total=1, texto=_texto_whatsapp([lic]),
+        imagens=[url_for("agenda.whatsapp_licitacao_imagem", id_=id_,
+                         v=datetime.now().strftime("%H%M%S"))],
+        titulo=identificacao(lic), nome_arquivo=f"licitacao-{id_}", lic=lic,
+    )
+
+
+@bp.route("/licitacoes/<int:id_>/whatsapp.png")
+@permissao("ver")
+def whatsapp_licitacao_imagem(id_):
+    lic = _buscar(id_)
+    png = imagem.desenhar([imagem.conteudo(lic)], 1, 1, "Licitação",
+                          current_app.config["NOME_ORGAO"])
+    return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
 
 
 @bp.route("/licitacoes.ics")
@@ -606,20 +714,18 @@ def exportar_ics():
     linhas = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Agenda de Licitacoes//PT-BR",
               "CALSCALE:GREGORIAN"]
     for lic in licitacoes:
-        identificacao = lic["numero_edital"] or lic["numero_processo"]
         descricao = f"Processo {lic['numero_processo']} — {lic['objeto']}"
-        if lic["agente_nome"]:
-            descricao += f"\nPregoeiro / agente: {lic['agente_nome']}"
+        descricao += "\n" + "\n".join(imagem.conteudo(lic)["equipe"])
         if lic["modalidade"] == CREDENCIAMENTO:
             if not lic["vigencia_ate"] or lic["status"] != "Em andamento":
                 continue
             inicio = [f"DTSTART;VALUE=DATE:{lic['vigencia_ate'].replace('-', '')}"]
-            resumo = f"Renovar credenciamento {identificacao}"
+            resumo = f"Renovar credenciamento {identificacao(lic)}"
         elif lic["data_sessao"]:
             dt = datetime.fromisoformat(lic["data_sessao"])
             inicio = [f"DTSTART:{dt.strftime('%Y%m%dT%H%M%S')}", "DURATION:PT2H"]
-            resumo = f"{lic['modalidade']} {identificacao}"
-            if lic["status"] == "Suspensa":
+            resumo = f"{identificacao(lic)} — {lic['modalidade']}"
+            if lic["status"] == "Suspensa" or lic["suspensa_em"]:
                 resumo = f"[SUSPENSA] {resumo}"
         else:
             continue

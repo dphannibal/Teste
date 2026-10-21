@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import tabela with context %}
+{% from '_macros.html' import tabela, legenda_modalidades with context %}
 {% block titulo %}Licitações{% endblock %}
 {% block conteudo %}
 <div class="cabecalho">
@@ -35,4 +35,5 @@
 
 <p class="sutil">{{ licitacoes|length }} licitação(ões) encontrada(s).</p>
 {{ tabela(licitacoes) }}
+{{ legenda_modalidades(modalidades) }}
 {% endblock %}

@@ -37,10 +37,13 @@ CREATE TABLE IF NOT EXISTS licitacoes (
     agente_id         INTEGER REFERENCES servidores(id) ON DELETE SET NULL,
     membro1_id        INTEGER REFERENCES servidores(id) ON DELETE SET NULL,
     membro2_id        INTEGER REFERENCES servidores(id) ON DELETE SET NULL,
+    membro3_id        INTEGER REFERENCES servidores(id) ON DELETE SET NULL,  -- opcional, raro
     valor_estimado    REAL,
     status            TEXT    NOT NULL,
     suspensa_em       TEXT,               -- data e hora em que a sessão foi suspensa
     motivo_suspensao  TEXT,
+    ocorrencia        TEXT,               -- última suspensão/remarcação (ver perfis.OCORRENCIAS)
+    impedimentos_mantidos TEXT,           -- ids de afastamentos aceitos com a sessão em andamento
     observacoes       TEXT,
     criado_por        INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
     criado_em         TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
@@ -49,6 +52,17 @@ CREATE TABLE IF NOT EXISTS licitacoes (
 
 CREATE INDEX IF NOT EXISTS idx_licitacoes_data ON licitacoes(data_sessao);
 CREATE INDEX IF NOT EXISTS idx_licitacoes_vigencia ON licitacoes(vigencia_ate);
+
+CREATE TABLE IF NOT EXISTS afastamentos (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    servidor_id  INTEGER NOT NULL REFERENCES servidores(id) ON DELETE CASCADE,
+    tipo         TEXT    NOT NULL,
+    inicio       TEXT    NOT NULL,
+    fim          TEXT    NOT NULL,
+    observacao   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_afastamentos_periodo ON afastamentos(inicio, fim);
 
 CREATE TABLE IF NOT EXISTS historico (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,8 +92,25 @@ def close_db(_exc=None):
         db.close()
 
 
+# Colunas acrescentadas depois da primeira versão: bancos já em uso as recebem na partida.
+COLUNAS_NOVAS = {
+    "licitacoes": {
+        "membro3_id": "INTEGER REFERENCES servidores(id) ON DELETE SET NULL",
+        "ocorrencia": "TEXT",
+        "impedimentos_mantidos": "TEXT",
+    },
+}
+
+
 def init_db():
-    get_db().executescript(SCHEMA)
+    conn = get_db()
+    conn.executescript(SCHEMA)
+    for tabela, colunas in COLUNAS_NOVAS.items():
+        existentes = {c["name"] for c in conn.execute(f"PRAGMA table_info({tabela})")}
+        for nome, tipo in colunas.items():
+            if nome not in existentes:
+                conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}")
+    conn.commit()
 
 
 def registrar(acao, referencia=None, detalhes=None, licitacao_id=None):
