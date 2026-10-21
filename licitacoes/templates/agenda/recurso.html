@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block titulo %}{{ 'Prazos do recurso' if editando else 'Registrar recurso' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Prazos do recurso' if editando else 'Registrar recurso' }} — {{ edital(lic) }}</h1>
+<p class="sutil">O pregoeiro / agente informa as datas e pode ajustá-las enquanto o recurso corre — por exemplo, na licitação
+presencial, depois de notificar as empresas da interposição do recurso. “Sugerir prazos legais” calcula, em dias úteis
+(art. 165 da Lei 14.133/2021): razões em {{ prazos_legais[0] }} dias da intimação/ata; contrarrazões em {{ prazos_legais[1] }} dias
+do fim das razões ou da notificação das empresas; reconsideração em {{ prazos_legais[2] }} dias; decisão da autoridade
+superior em até {{ prazos_legais[3] }} dias.</p>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <div class="grade">
+    <label>Intimação ou lavratura da ata *<input type="date" name="intimado_em" id="intimado_em" required value="{{ dados.intimado_em or '' }}"></label>
+    <label>Notificação das empresas sobre o recurso<input type="date" name="notificado_em" id="notificado_em" value="{{ dados.notificado_em or '' }}">
+      <small>Opcional. Se informada, as contrarrazões contam desta data.</small></label>
+  </div>
+  <div class="acoes"><button type="button" id="sugerir">Sugerir prazos legais</button></div>
+  <div class="grade">
+    <label>Razões até *<input type="date" name="razoes_ate" id="razoes_ate" required value="{{ dados.razoes_ate or '' }}"></label>
+    <label>Contrarrazões até *<input type="date" name="contrarrazoes_ate" id="contrarrazoes_ate" required value="{{ dados.contrarrazoes_ate or '' }}"></label>
+    <label>Reconsideração até *<input type="date" name="reconsideracao_ate" id="reconsideracao_ate" required value="{{ dados.reconsideracao_ate or '' }}"></label>
+    <label>Decisão até *<input type="date" name="decisao_ate" id="decisao_ate" required value="{{ dados.decisao_ate or '' }}"></label>
+  </div>
+  <label>Observação<textarea name="observacao" rows="2">{{ dados.observacao or '' }}</textarea></label>
+  <div class="acoes">
+    <button class="primario">{{ 'Salvar prazos' if editando else 'Registrar recurso' }}</button>
+    <a href="{{ url_for('agenda.detalhe', id_=lic.id) }}">Cancelar</a>
+  </div>
+</form>
+<script>
+(function () {
+  var NAO_UTEIS = {{ nao_uteis|tojson }}, PRAZOS = {{ prazos_legais|list|tojson }};
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  function util(d) { return !(iso(d) in NAO_UTEIS); }
+  // Mesma regra do servidor: exclui o dia do começo e conta só dias úteis.
+  function contar(inicio, dias) {
+    var d = new Date(inicio + 'T00:00:00Z'), n = 0;
+    while (n < dias) { d.setUTCDate(d.getUTCDate() + 1); if (util(d)) n++; }
+    return iso(d);
+  }
+  document.getElementById('sugerir').addEventListener('click', function () {
+    var intimado = document.getElementById('intimado_em').value;
+    if (!intimado) return;
+    var notificado = document.getElementById('notificado_em').value;
+    var razoes = contar(intimado, PRAZOS[0]);
+    var contrarrazoes = contar(notificado || razoes, PRAZOS[1]);
+    var reconsideracao = contar(contrarrazoes, PRAZOS[2]);
+    document.getElementById('razoes_ate').value = razoes;
+    document.getElementById('contrarrazoes_ate').value = contrarrazoes;
+    document.getElementById('reconsideracao_ate').value = reconsideracao;
+    document.getElementById('decisao_ate').value = contar(reconsideracao, PRAZOS[3]);
+  });
+})();
+</script>
+{% endblock %}

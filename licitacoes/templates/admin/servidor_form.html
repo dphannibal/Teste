@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block titulo %}{{ 'Novo servidor' if novo else 'Editar servidor' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Novo servidor' if novo else 'Editar servidor' }}</h1>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Nome completo *<input name="nome" required value="{{ dados.nome or '' }}"></label>
+  <label>Matrícula<input name="matricula" value="{{ dados.matricula or '' }}"></label>
+  <label>Vínculo *
+    <select name="vinculo" required>
+      {% for chave, nome in vinculos.items() %}<option value="{{ chave }}" {% if dados.vinculo == chave %}selected{% endif %}>{{ nome }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if not novo %}
+    <label class="opcao"><input type="checkbox" name="ativo" value="1" {% if dados.ativo %}checked{% endif %}> Servidor ativo (disponível para novas escalas)</label>
+  {% endif %}
+  <div class="acoes">
+    <button class="primario">Salvar</button>
+    <a href="{{ url_for('admin.servidores') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

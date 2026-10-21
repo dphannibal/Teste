@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block titulo %}{{ 'Novo usuário' if novo else 'Editar usuário' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Novo usuário' if novo else 'Editar usuário: ' ~ dados.login }}</h1>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Nome completo *<input name="nome" required value="{{ dados.nome or '' }}"></label>
+  {% if novo %}<label>Login *<input name="login" required pattern="[a-zA-Z0-9._\-]{3,40}" value="{{ dados.login or '' }}" placeholder="Ex.: maria.silva"></label>{% endif %}
+  <label>E-mail<input type="email" name="email" value="{{ dados.email or '' }}"></label>
+  <fieldset>
+    <legend>Perfil de acesso *</legend>
+    {% for chave, nome in PERFIS.items() %}
+      <label class="opcao"><input type="radio" name="perfil" value="{{ chave }}" {% if dados.perfil == chave %}checked{% endif %} required>
+        <strong>{{ nome }}</strong> — {{ descricoes[chave] }}</label>
+    {% endfor %}
+  </fieldset>
+  {% if not novo %}
+    <label class="opcao"><input type="checkbox" name="ativo" value="1" {% if dados.ativo %}checked{% endif %}> Usuário ativo</label>
+  {% else %}
+    <p class="sutil">Uma senha temporária será gerada e exibida após salvar.</p>
+  {% endif %}
+  <div class="acoes">
+    <button class="primario">Salvar</button>
+    <a href="{{ url_for('admin.usuarios') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

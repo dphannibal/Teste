@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block titulo %}Transferir feriado{% endblock %}
+{% block conteudo %}
+<h1>Transferir: {{ feriado.nome }} ({{ ano }})</h1>
+<p class="sutil">Data original em {{ ano }}: <strong>{{ original.strftime('%d/%m/%Y') if original else 'não ocorre' }}</strong>.
+A transferência vale só para {{ ano }}; nos outros anos continua a data original.</p>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <input type="hidden" name="ano" value="{{ ano }}">
+  <label>Nova data *<input type="date" name="nova_data" required value="{{ dados.nova_data or '' }}"></label>
+  <label>Ato que transferiu<input name="ato" value="{{ dados.ato or '' }}" placeholder="Ex.: Decreto municipal nº 123/2026"></label>
+  <div class="acoes">
+    <button class="primario">Salvar transferência</button>
+    <a href="{{ url_for('config.feriados', ano=ano) }}">Cancelar</a>
+  </div>
+</form>
+{% if existente %}
+<form method="post" class="estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="ano" value="{{ ano }}">
+  <button class="perigo" name="remover" value="1">Desfazer transferência (voltar para {{ original.strftime('%d/%m') }})</button>
+</form>
+{% endif %}
+{% endblock %}

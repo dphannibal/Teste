@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import tabela, legenda_modalidades, personalizar with context %}
+{% block titulo %}Licitações{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Licitações</h1>
+  <div class="acoes">
+    <a class="botao whatsapp" href="{{ url_for('agenda.whatsapp') }}">Enviar abertas pelo WhatsApp</a>
+    <a class="botao" href="{{ url_for('agenda.exportar_ics', **filtros) }}" title="Importar no Outlook ou Google Agenda">Exportar agenda (.ics)</a>
+    {% if pode('criar') %}<a class="botao primario" href="{{ url_for('agenda.nova') }}">+ Nova licitação</a>{% endif %}
+  </div>
+</div>
+
+<form class="filtros cartao" method="get">
+  <label>Buscar <input name="q" value="{{ filtros.q }}" placeholder="Objeto, processo ou edital (ex.: PE 007)"></label>
+  <label>Modalidade
+    <select name="modalidade"><option value="">Todas</option>
+      {% for m in modalidades %}<option value="{{ m.nome }}" {% if filtros.modalidade == m.nome %}selected{% endif %}>{{ m.nome }} ({{ m.sigla }})</option>{% endfor %}
+    </select>
+  </label>
+  <label>Situação
+    <select name="status"><option value="">Todas</option>
+      {% for s in situacoes %}<option value="{{ s.chave }}" {% if filtros.status == s.chave %}selected{% endif %}>{{ s.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Servidor na equipe
+    <select name="servidor"><option value="">Todos</option>
+      {% for s in servidores %}<option value="{{ s.id }}" {% if filtros.servidor == s.id|string %}selected{% endif %}>{{ s.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Sessão de <input type="date" name="de" value="{{ filtros.de }}"></label>
+  <label>Até <input type="date" name="ate" value="{{ filtros.ate }}"></label>
+  <div class="acoes"><button class="primario">Filtrar</button> <a href="{{ url_for('agenda.lista') }}">Limpar</a></div>
+</form>
+
+{{ personalizar() }}
+<p class="sutil">{{ licitacoes|length }} licitação(ões) encontrada(s).</p>
+{{ tabela(licitacoes, agora=agora) }}
+{{ legenda_modalidades(modalidades|map(attribute='nome')|list) }}
+{% endblock %}

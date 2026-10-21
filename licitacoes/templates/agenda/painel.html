@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import tabela, selo_situacao, edital_celula, estilo_modalidade, legenda_modalidades, personalizar with context %}
+{% block titulo %}Painel{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Painel</h1>
+  <div class="acoes"><a class="botao whatsapp" href="{{ url_for('agenda.whatsapp') }}">Enviar abertas pelo WhatsApp</a></div>
+</div>
+
+{# Cada quadro só aparece quando tem conteúdo, para manter a tela limpa. #}
+{% if contagem %}
+<section class="indicadores">
+  {% for s in situacoes if contagem.get(s.chave) %}
+    {% set cor = cores_situacao(s.chave) %}
+    <a class="indicador" style="border-top-color: {{ cor[1] }};" href="{{ url_for('agenda.lista', status=s.chave) }}">
+      <strong>{{ contagem[s.chave] }}</strong><span>{{ s.nome }}</span>
+    </a>
+  {% endfor %}
+</section>
+{% else %}
+<p class="vazio">Nenhuma licitação cadastrada ainda.{% if pode('criar') %} <a href="{{ url_for('agenda.nova') }}">Cadastrar a primeira</a>.{% endif %}</p>
+{% endif %}
+
+{% if em_andamento or suspensas %}{{ personalizar() }}{% endif %}
+
+{% if sessoes_hoje %}
+<section class="cartao destaque">
+  <h2>Sessões de hoje</h2>
+  <ul class="hoje">
+  {% for l in sessoes_hoje %}
+    <li style="{{ estilo_modalidade(l.modalidade) }}"><strong>{{ l.data_sessao[11:16] }}</strong> {{ edital_celula(l) }} — {{ l.modalidade }}: {{ l.objeto|truncate(90) }}{% if l.local %} <small>({{ l.local }})</small>{% endif %}</li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if em_andamento %}
+<section class="cartao">
+  <h2>Licitações em andamento</h2>
+  <p class="sutil">Editais publicados, sessões remarcadas e sessões abertas — inclusive as suspensas depois de abertas, para análise documental.</p>
+  {{ tabela(em_andamento, agora=agora) }}
+</section>
+{% endif %}
+
+{% if contagem and not (em_andamento or em_recurso or suspensas or credenciamentos) %}
+<p class="vazio">Nenhuma licitação aberta no momento.</p>
+{% endif %}
+
+{% if em_recurso %}
+<section class="cartao alerta">
+  <h2>Em recurso — prazos</h2>
+  <p class="sutil">Prazos informados pelo pregoeiro / agente (art. 165 da Lei 14.133). A etapa atual está sublinhada.</p>
+  <div class="tabela-rolagem">
+  <table class="licitacoes">
+    <thead><tr><th>Edital</th><th>Etapa atual</th><th>Razões até</th><th>Contrarrazões até</th><th>Reconsideração até</th><th>Decisão até</th></tr></thead>
+    <tbody>
+    {% for l in em_recurso %}
+      {% set etapa = etapa_recurso(l) %}
+      <tr class="linha-modalidade" style="{{ estilo_modalidade(l.modalidade) }}">
+        <td class="nowrap">{{ edital_celula(l) }}</td>
+        <td>{% if etapa[2] %}<span class="selo selo-vermelho">Decisão vencida</span>{% else %}<strong>{{ etapa[0] }}</strong>{% if etapa[1] == hoje %} <span class="selo selo-laranja">vence hoje</span>{% endif %}{% endif %}</td>
+        {% for campo in ['razoes_ate', 'contrarrazoes_ate', 'reconsideracao_ate', 'decisao_ate'] %}
+          <td class="nowrap {% if l[campo] == etapa[1] %}etapa-atual{% endif %}">{{ l[campo]|data(false) }}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+{% if suspensas %}
+<section class="cartao alerta">
+  <h2>Suspensas antes da abertura da sessão</h2>
+  <p class="sutil">A sessão pública ainda não foi aberta e não há nova data definida.</p>
+  {{ tabela(suspensas) }}
+</section>
+{% endif %}
+
+{% if credenciamentos %}
+<section class="cartao">
+  <h2>Credenciamentos abertos</h2>
+  <p class="sutil">Ficam abertos por tempo indeterminado; a vigência deve ser renovada a cada ano.</p>
+  <div class="tabela-rolagem">
+  <table class="licitacoes">
+    <thead><tr><th>Edital</th><th>Vigência até</th><th>Objeto</th><th>Renovação</th></tr></thead>
+    <tbody>
+    {% for l in credenciamentos %}
+      <tr class="linha-modalidade" style="{{ estilo_modalidade(l.modalidade) }}">
+        <td class="nowrap">{{ edital_celula(l) }}</td>
+        <td class="nowrap">{{ l.vigencia_ate|data(false) if l.vigencia_ate else '—' }}</td>
+        <td>{{ l.objeto|truncate(100) }}</td>
+        <td>
+          {% if not l.vigencia_ate or l.vigencia_ate < hoje %}<span class="selo selo-vermelho">Vencida — renovar</span>
+          {% elif l.vigencia_ate <= alerta_renovacao %}<span class="selo selo-laranja">Renovar em breve</span>
+          {% else %}<span class="selo selo-verde">Em dia</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+{% if modalidades_em_uso %}{{ legenda_modalidades(modalidades_em_uso) }}{% endif %}
+{% endblock %}

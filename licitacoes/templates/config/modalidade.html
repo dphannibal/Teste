@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block titulo %}{{ 'Nova modalidade' if novo else 'Editar modalidade' }}{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Nova modalidade' if novo else 'Editar modalidade: ' ~ dados.nome }}</h1>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Nome *<input name="nome" required value="{{ dados.nome or '' }}" placeholder="Ex.: Pregão Eletrônico"></label>
+  <div class="grade">
+    <label>Sigla *<input name="sigla" required maxlength="6" value="{{ dados.sigla or '' }}" placeholder="Ex.: PE" style="text-transform: uppercase"></label>
+    <label>Cor *<input type="color" name="cor" value="{{ dados.cor }}"></label>
+    <label>Ordem<input type="number" name="ordem" value="{{ dados.ordem }}"></label>
+  </div>
+  <fieldset>
+    <legend>Critérios de julgamento cabíveis (definem o prazo mínimo legal)</legend>
+    {% set permitidos = (dados.prazos_permitidos or '').split(',') %}
+    {% for k, p in prazos.items() %}
+    <label class="opcao"><input type="checkbox" name="prazos_permitidos" value="{{ k }}" {% if k in permitidos %}checked{% endif %}>
+      <span>{{ p[0] }} — <strong>{{ p[1] }} dias úteis</strong></span></label>
+    {% endfor %}
+    <label>Padrão ao cadastrar
+      <select name="prazo_padrao">{% for k, p in prazos.items() %}<option value="{{ k }}" {% if dados.prazo_padrao == k %}selected{% endif %}>{{ p[0] }}</option>{% endfor %}</select></label>
+  </fieldset>
+  <label>Quem conduz<input name="rotulo_condutor" value="{{ dados.rotulo_condutor or '' }}" placeholder="Ex.: Pregoeiro(a) ou Agente de contratação"></label>
+  <label class="opcao"><input type="checkbox" name="exige_equipe" value="1" {% if dados.exige_equipe %}checked{% endif %}> Exige equipe (condutor e dois membros)</label>
+  <label class="opcao"><input type="checkbox" name="credenciamento" value="1" {% if dados.credenciamento %}checked{% endif %} {% if em_uso %}disabled{% endif %}> Funciona como credenciamento: sem sessão pública, aberto com vigência renovada a cada ano</label>
+  {% if em_uso %}<input type="hidden" name="credenciamento" value="{{ 1 if dados.credenciamento else '' }}"><p class="sutil">O tipo não pode mudar: há {{ em_uso }} licitação(ões) nesta modalidade.</p>{% endif %}
+  <label class="opcao"><input type="checkbox" name="ativa" value="1" {% if dados.ativa %}checked{% endif %}> Ativa (disponível para novas licitações)</label>
+  <div class="acoes">
+    <button class="primario">Salvar</button>
+    <a href="{{ url_for('config.parametros') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

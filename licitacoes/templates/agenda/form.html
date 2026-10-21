@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block conteudo %}
+<h1>{{ titulo }}</h1>
+<form method="post" class="cartao formulario" id="form-licitacao">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <div class="grade">
+    <label>Nº do edital
+      <span class="com-prefixo"><span id="sigla" class="prefixo" aria-hidden="true"></span><input name="numero_edital" value="{{ dados.numero_edital or '' }}" placeholder="Ex.: 007/2026"></span>
+      <small>Digite só o número; a sigla da modalidade é acrescentada nas telas (ex.: PE 007/2026). Obrigatório a partir da publicação.</small></label>
+    <label>Nº do processo *<input name="numero_processo" required value="{{ dados.numero_processo or '' }}" placeholder="Ex.: 2026.001234"></label>
+    <label>Modalidade *
+      <select name="modalidade" id="modalidade" required>
+        <option value="">Selecione…</option>
+        {% for m in modalidades %}<option value="{{ m.nome }}" data-sigla="{{ m.sigla }}" data-prazo="{{ m.prazo_padrao }}" data-prazos="{{ prazos_da_modalidade(m)|join(',') }}" data-credenciamento="{{ m.credenciamento }}" {% if dados.modalidade == m.nome %}selected{% endif %}>{{ m.nome }} ({{ m.sigla }})</option>{% endfor %}
+      </select>
+    </label>
+    <label>Critério de julgamento
+      <select name="prazo_hipotese" id="prazo" {% if dados.prazo_hipotese %}data-escolhido="1"{% endif %}>
+        {% for k, p in prazos.items() %}<option value="{{ k }}" data-dias="{{ p[1] }}" data-conta="{{ 1 if p[2] else 0 }}" {% if dados.prazo_hipotese == k %}selected{% endif %}>{{ p[0] }} — {{ p[1] }} dias úteis</option>{% endfor %}
+      </select>
+      <small>Define o prazo mínimo legal entre a divulgação e a sessão.</small></label>
+    <label>Situação *
+      <select name="status" id="status" required>
+        {% for s in situacoes %}<option value="{{ s.chave }}" data-fase="{{ s.fase }}" {% if dados.status == s.chave %}selected{% endif %}>{{ s.nome }}</option>{% endfor %}
+      </select>
+      {% if atual and fase_de(atual.status) in ['publicada', 'remarcada', 'suspensa', 'andamento'] %}<small>Suspensão e remarcação: botão “Suspender / remarcar” na tela da licitação.</small>{% endif %}
+    </label>
+    <label>Publicação do edital<input type="date" name="data_publicacao" id="data_publicacao" value="{{ dados.data_publicacao or '' }}">
+      {% if atual and atual.retificado_em %}<small>Edital retificado em {{ atual.retificado_em|data(false) }}: o prazo conta dessa data.</small>{% endif %}</label>
+    <label class="so-sessao">Data e hora da sessão<input type="datetime-local" name="data_sessao" id="data_sessao" value="{{ dados.data_sessao or '' }}">
+      <small id="aviso-data" class="atraso" hidden></small>
+      <small id="data-minima"></small></label>
+    <label class="so-credenciamento">Vigência até
+      <input type="date" name="vigencia_ate" value="{{ dados.vigencia_ate or '' }}">
+      <small>Em branco: 1 ano após a publicação. Renove a cada ano pela tela da licitação.</small>
+    </label>
+    <label>Local / plataforma<input name="local" value="{{ dados.local or '' }}" placeholder="Ex.: Compras.gov.br, Sala de licitações"></label>
+    <label>Valor estimado (R$)<input name="valor_estimado" inputmode="decimal" placeholder="Ex.: 150.000,00"
+      value="{% if dados.valor_estimado is number %}{{ '%.2f'|format(dados.valor_estimado)|replace('.', ',') }}{% else %}{{ dados.valor_estimado or '' }}{% endif %}"></label>
+  </div>
+
+  <fieldset>
+    <legend>Equipe</legend>
+    <p class="sutil">Pregoeiro ou agente de contratação e dois membros (obrigatórios fora da fase de planejamento).
+      O terceiro membro é opcional. Os servidores efetivos devem ser maioria (3 integrantes: ao menos 2; 4 integrantes: ao menos 3), e ninguém pode estar de férias ou afastado na data da sessão.</p>
+    {% if not servidores %}<p class="aviso aviso-info">Nenhum servidor cadastrado.{% if pode('servidores') %} <a href="{{ url_for('admin.servidor_form') }}">Cadastre os servidores</a> para montar a equipe.{% else %} Peça a um gestor que cadastre os servidores.{% endif %}</p>{% endif %}
+    <div class="grade">
+      {% for campo, rotulo in funcoes.items() %}
+      <label>{{ rotulo }}
+        <select name="{{ campo }}" class="membro">
+          <option value="">{{ '— nenhum —' if campo == 'membro3_id' else '—' }}</option>
+          {% for s in servidores %}<option value="{{ s.id }}" data-efetivo="{{ 1 if s.vinculo in efetivos else 0 }}" data-afastamentos="{{ s.afastamentos or '' }}" {% if dados[campo]|string == s.id|string %}selected{% endif %}>{{ s.nome }}{% if s.vinculo not in efetivos %} (não efetivo){% endif %}{% if not s.ativo %} [inativo]{% endif %}</option>{% endfor %}
+        </select>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="aviso aviso-erro" id="alerta-equipe" hidden>Os servidores efetivos não seriam maioria na equipe. Substitua um dos membros não efetivos.</p>
+    <p class="aviso aviso-alerta" id="alerta-afastamento" hidden></p>
+    {% if pendentes %}
+    <div class="aviso aviso-alerta">
+      <p><strong>A sessão já está em andamento.</strong> Troque o membro impedido acima ou mantenha-o na equipe:</p>
+      <label class="opcao"><input type="checkbox" name="manter_impedidos" value="1"> Manter o membro impedido ({{ pendentes|map(attribute='nome')|join(', ') }}) — a decisão fica registrada no histórico</label>
+    </div>
+    {% endif %}
+  </fieldset>
+
+  {% if pontos %}
+  <div class="aviso aviso-alerta">
+    <label class="opcao"><input type="checkbox" name="confirmar_ponto_facultativo" value="1"> Haverá expediente no ponto facultativo: manter a sessão nesta data</label>
+  </div>
+  {% endif %}
+
+  <label>Objeto *<textarea name="objeto" rows="3" required>{{ dados.objeto or '' }}</textarea></label>
+  <label>Observações<textarea name="observacoes" rows="3">{{ dados.observacoes or '' }}</textarea></label>
+  <div class="acoes">
+    <button class="primario">Salvar</button>
+    <a href="{{ url_for('agenda.detalhe', id_=atual.id) if atual else url_for('agenda.lista') }}">Cancelar</a>
+  </div>
+</form>
+
+<script>
+(function () {
+  var FASES_CRED = {{ fases_credenciamento|list|tojson }};
+  var modalidade = document.getElementById('modalidade'), status = document.getElementById('status');
+  var membros = document.querySelectorAll('select.membro'), sessao = document.getElementById('data_sessao');
+  var NAO_UTEIS = {{ nao_uteis|tojson }}, prazo = document.getElementById('prazo');
+  var publicacao = document.getElementById('data_publicacao');
+  var DIVULGACAO_RETIFICADA = {{ (atual.retificado_em if atual else none)|tojson }};
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  function maisUm(d) { var n = new Date(d); n.setUTCDate(n.getUTCDate() + 1); return n; }
+  function util(d) { return !(iso(d) in NAO_UTEIS); }
+  // Mesma regra do servidor: a contagem começa no dia útil seguinte à divulgação (no aviso
+  // de dispensa, no próprio dia) e a sessão pode ser no último dia do prazo.
+  function dataMinima(divulgacao, dias, contaDivulgacao) {
+    var d = new Date(divulgacao + 'T00:00:00Z'), contados = contaDivulgacao && util(d) ? 1 : 0;
+    while (contados < dias) { d = maisUm(d); if (util(d)) contados++; }
+    return d;
+  }
+  // Só os critérios de julgamento cabíveis na modalidade escolhida.
+  function filtrarPrazos() {
+    var opcao = modalidade.selectedOptions[0];
+    var cabiveis = opcao && opcao.dataset.prazos ? opcao.dataset.prazos.split(',') : [];
+    Array.prototype.forEach.call(prazo.options, function (o) {
+      o.hidden = o.disabled = cabiveis.length > 0 && cabiveis.indexOf(o.value) < 0;
+    });
+    // Usa o padrão da modalidade, salvo se o usuário já escolheu um critério que ainda cabe.
+    var escolhido = prazo.dataset.escolhido === '1';
+    if (!escolhido || !prazo.value || (prazo.selectedOptions[0] && prazo.selectedOptions[0].disabled)) {
+      prazo.value = opcao && opcao.dataset.prazo ? opcao.dataset.prazo : cabiveis[0] || '';
+    }
+    prazo.closest('label').hidden = cabiveis.length === 1 && cabiveis[0] === 'nao_se_aplica';
+  }
+  function conferirData() {
+    var opcao = modalidade.selectedOptions[0], cred = !!opcao && opcao.dataset.credenciamento === '1';
+    var item = prazo.selectedOptions[0];
+    var dias = item ? parseInt(item.dataset.dias || '0', 10) : 0, conta = item && item.dataset.conta === '1';
+    var divulgacao = DIVULGACAO_RETIFICADA || publicacao.value, minima = document.getElementById('data-minima');
+    minima.textContent = '';
+    if (!cred && dias && divulgacao) {
+      var m = dataMinima(divulgacao, dias, conta);
+      minima.textContent = 'Prazo de ' + dias + ' dias úteis: sessão a partir de ' + br(iso(m)) + '.';
+    }
+    var aviso = document.getElementById('aviso-data'), dia = sessao.value.slice(0, 10);
+    aviso.hidden = cred || !dia || !(dia in NAO_UTEIS);
+    if (!aviso.hidden) aviso.textContent = br(dia) + ': ' + NAO_UTEIS[dia] + '.';
+  }
+  function ajustarModalidade() {
+    var opcao = modalidade.selectedOptions[0];
+    var cred = !!opcao && opcao.dataset.credenciamento === '1';
+    document.getElementById('sigla').textContent = opcao && opcao.dataset.sigla ? opcao.dataset.sigla : '';
+    document.querySelectorAll('.so-sessao').forEach(function (e) { e.hidden = cred; });
+    document.querySelectorAll('.so-credenciamento').forEach(function (e) { e.hidden = !cred; });
+    Array.prototype.forEach.call(status.options, function (o) {
+      o.hidden = o.disabled = cred && FASES_CRED.indexOf(o.dataset.fase) < 0;
+    });
+    if (status.selectedOptions[0] && status.selectedOptions[0].disabled) {
+      var primeira = Array.prototype.find.call(status.options, function (o) { return !o.disabled; });
+      if (primeira) status.value = primeira.value;
+    }
+    conferirAfastamentos();
+  }
+  function conferirEquipe() {
+    var escolhidos = 0, naoEfetivos = 0;
+    membros.forEach(function (s) {
+      var o = s.selectedOptions[0];
+      if (o && o.value) { escolhidos++; if (o.dataset.efetivo === '0') naoEfetivos++; }
+    });
+    // Efetivos precisam ser maioria estrita: empate não basta.
+    document.getElementById('alerta-equipe').hidden = naoEfetivos * 2 < Math.max(escolhidos, 3);
+  }
+  function br(d) { return d.split('-').reverse().join('/'); }
+  function conferirAfastamentos() {
+    var opcao = modalidade.selectedOptions[0], cred = !!opcao && opcao.dataset.credenciamento === '1';
+    var dia = !cred && sessao.value ? sessao.value.slice(0, 10) : '', avisos = [];
+    membros.forEach(function (s) {
+      var o = s.selectedOptions[0];
+      if (!dia || !o || !o.value || !o.dataset.afastamentos) return;
+      o.dataset.afastamentos.split(';').forEach(function (a) {
+        var p = a.split(':');
+        if (p[0] <= dia && dia <= p[1]) avisos.push(o.textContent.replace(/ \(.*$/, '') + ' — ' + p[2].toLowerCase() + ' de ' + br(p[0]) + ' a ' + br(p[1]));
+      });
+    });
+    var alerta = document.getElementById('alerta-afastamento');
+    alerta.hidden = !avisos.length;
+    alerta.textContent = 'Impedido na data da sessão: ' + avisos.join('; ') + '.';
+  }
+  modalidade.addEventListener('change', ajustarModalidade);
+  prazo.addEventListener('change', function () { prazo.dataset.escolhido = '1'; });
+  modalidade.addEventListener('change', filtrarPrazos);
+  modalidade.addEventListener('change', conferirData);
+  [sessao, prazo, publicacao].forEach(function (e) { e.addEventListener('change', conferirData); });
+  sessao.addEventListener('change', conferirAfastamentos);
+  membros.forEach(function (s) {
+    s.addEventListener('change', conferirEquipe);
+    s.addEventListener('change', conferirAfastamentos);
+  });
+  filtrarPrazos(); ajustarModalidade(); conferirEquipe(); conferirData();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,119 @@
+{% macro selo_situacao(chave, texto=none) -%}
+  {%- set cor = cores_situacao(chave) -%}
+  <span class="selo" style="background: {{ cor[0] }}; color: {{ cor[1] }};">{{ texto or nome_situacao(chave) }}</span>
+{%- endmacro %}
+
+{% macro situacao_selo(l) -%}{{ selo_situacao(l.status, situacao(l)) }}{%- endmacro %}
+
+{% macro estilo_modalidade(modalidade) -%}
+  {%- set cor = cor_modalidade(modalidade) -%}--fundo: {{ cor[0] }}; --destaque: {{ cor[1] }};
+{%- endmacro %}
+
+{% macro edital_celula(l) -%}
+  <a class="edital" href="{{ url_for('agenda.detalhe', id_=l.id) }}">{{ edital(l) }}</a>
+  {% if l.numero_edital %}<small class="processo">Proc. {{ l.numero_processo }}</small>{% endif %}
+{%- endmacro %}
+
+{% macro quando(l, agora=none) -%}
+  {% set fase = fase_de(l.status) %}
+  {% if modalidade_de(l.modalidade).credenciamento %}<span class="sutil">Aberto</span>{% if l.vigencia_ate %}<br><small>vigência até {{ l.vigencia_ate|data(false) }}</small>{% endif %}
+  {%- elif l.suspensa_em %}<strong>Suspensa</strong><br><small>em {{ l.suspensa_em|data }}</small>
+  {%- elif l.data_sessao %}<strong>{{ l.data_sessao|data(false) }}</strong> {{ l.data_sessao[11:16] }}
+    {%- if fase == 'remarcada' %}<br><small>remarcada</small>{% elif l.ocorrencia == 'continuacao' and fase == 'andamento' %}<br><small>continuação</small>{% endif %}
+    {%- if agora and l.data_sessao < agora and fase in ['publicada', 'remarcada', 'andamento'] %}<br><small class="atraso">sessão passada — registre o desfecho</small>{% endif %}
+  {%- else %}<span class="sutil">A definir</span>{% endif %}
+{%- endmacro %}
+
+{% macro equipe_resumo(l) -%}
+  {% set membros = [l.membro1_nome, l.membro2_nome, l.membro3_nome]|select|list %}
+  {% if l.agente_nome %}<div><span class="rotulo">{{ modalidade_de(l.modalidade).rotulo_condutor }}:</span> {{ l.agente_nome }}</div>{% endif %}
+  {% if membros %}<div><span class="rotulo">Membros:</span> {{ membros|join(', ') }}</div>{% endif %}
+  {% if not l.agente_nome and not membros %}<span class="sutil">A definir</span>{% endif %}
+{%- endmacro %}
+
+{% macro celula(coluna, l, agora) -%}
+  {%- if coluna == 'edital' %}<td class="nowrap">{{ edital_celula(l) }}</td>
+  {%- elif coluna == 'data' %}<td class="nowrap">{{ quando(l, agora) }}</td>
+  {%- elif coluna == 'modalidade' %}<td>{{ l.modalidade }}</td>
+  {%- elif coluna == 'objeto' %}<td>{{ l.objeto|truncate(110) }}</td>
+  {%- elif coluna == 'equipe' %}<td class="equipe">{{ equipe_resumo(l) }}</td>
+  {%- elif coluna == 'situacao' %}<td>{{ situacao_selo(l) }}</td>
+  {%- elif coluna == 'local' %}<td>{{ l.local or '—' }}</td>
+  {%- elif coluna == 'valor' %}<td class="nowrap">{{ l.valor_estimado|moeda }}</td>
+  {%- elif coluna == 'publicacao' %}<td class="nowrap">{{ l.data_publicacao|data(false) if l.data_publicacao else '—' }}</td>
+  {%- endif %}
+{%- endmacro %}
+
+{% macro tabela(licitacoes, vazio='Nenhuma licitação encontrada.', agora=none) -%}
+{% if licitacoes %}
+{% set prefs = preferencias() %}
+<div class="tabela-rolagem">
+<table class="licitacoes">
+  <thead><tr>
+  {% for c in prefs.colunas %}
+    <th><a class="ordenar" href="{{ link_ordem(c) }}" title="Ordenar por {{ COLUNAS[c]|lower }}">{{ COLUNAS[c] }}{% if prefs.ordem == c %} {{ '▲' if prefs.direcao == 'asc' else '▼' }}{% endif %}</a></th>
+  {% endfor %}
+  </tr></thead>
+  <tbody>
+  {% for l in licitacoes %}
+    <tr class="linha-modalidade" style="{{ estilo_modalidade(l.modalidade) }}">
+      {% for c in prefs.colunas %}{{ celula(c, l, agora) }}{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="vazio">{{ vazio }}</p>
+{% endif %}
+{%- endmacro %}
+
+{% macro personalizar() -%}
+{% set prefs = preferencias() %}
+<details class="cartao personalizar">
+  <summary>Colunas e ordenação</summary>
+  <form method="post" action="{{ url_for('agenda.salvar_tabela') }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="voltar" value="{{ request.path }}">
+    <p class="sutil">Marque as colunas que quer ver e use as setas para mudar a ordem. Também é possível ordenar clicando no título de uma coluna.</p>
+    <ol class="lista-colunas">
+      {% for c in prefs.colunas + (COLUNAS.keys()|reject('in', prefs.colunas)|list) %}
+      <li>
+        <input type="hidden" name="coluna" value="{{ c }}">
+        <label class="opcao"><input type="checkbox" name="visivel" value="{{ c }}" {% if c in prefs.colunas %}checked{% endif %}> {{ COLUNAS[c] }}</label>
+        <span class="mover">
+          <button type="button" class="link" data-mover="-1" aria-label="Subir {{ COLUNAS[c] }}">▲</button>
+          <button type="button" class="link" data-mover="1" aria-label="Descer {{ COLUNAS[c] }}">▼</button>
+        </span>
+      </li>
+      {% endfor %}
+    </ol>
+    <div class="grade">
+      <label>Ordenar por
+        <select name="ordem">{% for c in CRITERIOS %}<option value="{{ c }}" {% if prefs.ordem == c %}selected{% endif %}>{{ 'Pregoeiro / agente' if c == 'equipe' else COLUNAS[c] }}</option>{% endfor %}</select>
+      </label>
+      <label>Sentido
+        <select name="direcao">
+          <option value="asc" {% if prefs.direcao == 'asc' %}selected{% endif %}>Crescente</option>
+          <option value="desc" {% if prefs.direcao == 'desc' %}selected{% endif %}>Decrescente</option>
+        </select>
+      </label>
+    </div>
+    <div class="acoes"><button class="primario">Salvar</button></div>
+  </form>
+</details>
+<script>
+document.querySelectorAll('.lista-colunas [data-mover]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var li = b.closest('li'), alvo = b.dataset.mover === '-1' ? li.previousElementSibling : li.nextElementSibling;
+    if (!alvo) return;
+    if (b.dataset.mover === '-1') li.parentNode.insertBefore(li, alvo); else li.parentNode.insertBefore(alvo, li);
+    b.focus();
+  });
+});
+</script>
+{%- endmacro %}
+
+{% macro legenda_modalidades(nomes) -%}
+<p class="legenda">{% for m in nomes %}<span class="chip-modalidade" style="{{ estilo_modalidade(m) }}">{{ m }}</span>{% endfor %}</p>
+{%- endmacro %}

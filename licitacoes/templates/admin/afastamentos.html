@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block titulo %}Afastamentos — {{ servidor.nome }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Férias e afastamentos — {{ servidor.nome }}</h1>
+  <div class="acoes"><a href="{{ url_for('admin.servidores') }}">Voltar aos servidores</a></div>
+</div>
+<p class="sutil">No período informado o servidor não pode ser escalado em sessão de licitação. Ao registrar, o sistema avisa se ele já está em alguma equipe com sessão nesse período.</p>
+
+<form method="post" class="cartao formulario">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <div class="grade">
+    <label>Tipo *
+      <select name="tipo" required>{% for t in tipos %}<option {% if dados.tipo == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+    </label>
+    <label>Início *<input type="date" name="inicio" required value="{{ dados.inicio or '' }}"></label>
+    <label>Fim *<input type="date" name="fim" required value="{{ dados.fim or '' }}"></label>
+    <label>Observação<input name="observacao" value="{{ dados.observacao or '' }}" placeholder="Ex.: Portaria nº 123/2026"></label>
+  </div>
+  <div class="acoes"><button class="primario">Registrar</button></div>
+</form>
+
+<div class="tabela-rolagem">
+<table>
+  <thead><tr><th>Tipo</th><th>Período</th><th>Observação</th><th></th></tr></thead>
+  <tbody>
+  {% for a in afastamentos %}
+    <tr class="{% if a.fim < hoje %}inativo{% endif %}">
+      <td>{{ a.tipo }}{% if a.inicio <= hoje <= a.fim %} <span class="selo selo-laranja">em curso</span>{% endif %}</td>
+      <td class="nowrap">{{ a.inicio|data(false) }} a {{ a.fim|data(false) }}</td>
+      <td>{{ a.observacao or '—' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin.excluir_afastamento', id_=a.id) }}" onsubmit="return confirm('Excluir este afastamento?');">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="link">Excluir</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4" class="vazio">Nenhum afastamento registrado.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

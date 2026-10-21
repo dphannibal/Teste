@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import situacao_selo, estilo_modalidade with context %}
+{% block titulo %}{{ edital(lic) }}{% endblock %}
+{% block conteudo %}
+{% set cred = credenciamento %}
+<div class="cabecalho titulo-licitacao" style="{{ estilo_modalidade(lic.modalidade) }}">
+  <h1><span class="edital grande">{{ edital(lic) }}</span> <span class="modalidade">{{ lic.modalidade }}</span> {{ situacao_selo(lic) }}</h1>
+  <div class="acoes">
+    {% if pode('editar') %}<a class="botao primario" href="{{ url_for('agenda.editar', id_=lic.id) }}">Editar</a>{% endif %}
+    {% if pode('recursos') and pode_recorrer %}<a class="botao" href="{{ url_for('agenda.recurso', id_=lic.id) }}">Registrar recurso</a>{% endif %}
+    {% if pode('recursos') and lic.recurso_id %}<a class="botao" href="{{ url_for('agenda.editar_recurso', id_=lic.id) }}">Prazos do recurso</a>
+    <a class="botao primario" href="{{ url_for('agenda.decidir_recurso', id_=lic.id) }}">Decisão do recurso</a>{% endif %}
+    {% if pode('suspender') and pode_suspender %}<a class="botao" href="{{ url_for('agenda.suspender', id_=lic.id) }}">Suspender / remarcar</a>{% endif %}
+    {% if cred and pode('editar') and fase == 'andamento' %}
+    <form method="post" action="{{ url_for('agenda.renovar', id_=lic.id) }}" onsubmit="return confirm('Renovar a vigência do credenciamento por mais um ano?');">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button>Renovar por 1 ano</button>
+    </form>
+    {% endif %}
+    <a class="botao whatsapp" href="{{ url_for('agenda.whatsapp_licitacao', id_=lic.id) }}">Imagem p/ WhatsApp</a>
+    {% if pode('excluir') %}
+    <form method="post" action="{{ url_for('agenda.excluir', id_=lic.id) }}" onsubmit="return confirm('Excluir definitivamente esta licitação?');">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="perigo">Excluir</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if lic.suspensa_em %}
+<div class="aviso aviso-alerta"><strong>{{ OCORRENCIAS[lic.ocorrencia].rotulo if lic.ocorrencia in OCORRENCIAS else 'Suspensa' }}</strong> desde {{ lic.suspensa_em|data }}.{% if lic.motivo_suspensao %} Motivo: {{ lic.motivo_suspensao }}{% endif %}</div>
+{% elif lic.ocorrencia in OCORRENCIAS and fase in ['remarcada', 'andamento'] %}
+<div class="aviso aviso-info"><strong>{{ OCORRENCIAS[lic.ocorrencia].rotulo }}</strong> para {{ lic.data_sessao|data }}.</div>
+{% endif %}
+{% for alerta in alertas_equipe %}<div class="aviso aviso-erro">{{ alerta }}{% if pode('editar') %} <a href="{{ url_for('agenda.editar', id_=lic.id) }}">Editar equipe</a>{% endif %}</div>{% endfor %}
+
+<section class="cartao">
+  <dl class="dados">
+    <dt>Nº do processo</dt><dd>{{ lic.numero_processo }}</dd>
+    <dt>Publicação do edital</dt><dd>{{ lic.data_publicacao|data(false) if lic.data_publicacao else '—' }}</dd>
+    {% if cred %}
+    <dt>Vigência até</dt><dd>{{ lic.vigencia_ate|data(false) if lic.vigencia_ate else '—' }} <small>(aberto a novos credenciados enquanto vigente; renovação anual)</small></dd>
+    {% else %}
+    <dt>Data da sessão</dt><dd>{{ lic.data_sessao|data if lic.data_sessao else 'A definir' }}</dd>
+    <dt>Prazo mínimo legal</dt><dd>{% if prazo[1] %}{{ prazo[1] }} dias úteis — {{ prazo[0] }}{% if data_minima %}<br><small>Sessão possível a partir de {{ data_minima.strftime('%d/%m/%Y') }}{% if lic.retificado_em %} (contado da retificação em {{ lic.retificado_em|data(false) }}){% endif %}</small>{% endif %}{% else %}{{ prazo[0] }}{% endif %}</dd>
+    {% endif %}
+    <dt>Local / plataforma</dt><dd>{{ lic.local or '—' }}</dd>
+    <dt>Valor estimado</dt><dd>{{ lic.valor_estimado|moeda }}</dd>
+    <dt>Objeto</dt><dd class="texto">{{ lic.objeto }}</dd>
+    <dt>Observações</dt><dd class="texto">{{ lic.observacoes or '—' }}</dd>
+  </dl>
+</section>
+
+{% if recursos %}
+<section class="cartao {% if lic.recurso_id %}alerta{% endif %}">
+  <h2>Recursos</h2>
+  <div class="tabela-rolagem">
+  <table>
+    <thead><tr><th>Intimação / ata</th><th>Notificação</th><th>Razões até</th><th>Contrarrazões até</th><th>Reconsideração até</th><th>Decisão até</th><th>Resultado</th></tr></thead>
+    <tbody>
+    {% for r in recursos %}
+      <tr>
+        <td class="nowrap">{{ r.intimado_em|data(false) }}</td>
+        <td class="nowrap">{{ r.notificado_em|data(false) if r.notificado_em else '—' }}</td>
+        <td class="nowrap">{{ r.razoes_ate|data(false) }}</td>
+        <td class="nowrap">{{ r.contrarrazoes_ate|data(false) }}</td>
+        <td class="nowrap">{{ r.reconsideracao_ate|data(false) }}</td>
+        <td class="nowrap">{{ r.decisao_ate|data(false) }}</td>
+        <td>{% if r.decidido_em %}{{ r.resultado }} em {{ r.decidido_em|data(false) }}{% else %}<strong>Em curso</strong> — {{ etapa_recurso(r)[0] }} até {{ etapa_recurso(r)[1]|data(false) }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="cartao">
+  <h2>Equipe</h2>
+  <dl class="dados">
+    {% for campo, rotulo in funcoes.items() if campo != 'membro3_id' or lic.membro3_id %}
+      {% set s = escalados.get(lic[campo]) %}
+      <dt>{{ rotulo|replace(' (3, opcional)', ' (3)') }}</dt>
+      <dd>{% if s %}{{ s.nome }}{% if s.matricula %} <small>mat. {{ s.matricula }}</small>{% endif %}
+        <span class="selo {{ 'selo-verde' if s.vinculo in efetivos else 'selo-cinza' }}">{{ 'Efetivo' if s.vinculo in efetivos else 'Não efetivo' }}</span>
+        {% else %}—{% endif %}</dd>
+    {% endfor %}
+  </dl>
+</section>
+
+<section class="cartao">
+  <h2>Histórico</h2>
+  {% if historico %}
+  <ul class="historico">
+    {% for h in historico %}
+      <li><time>{{ h.data|data }}</time> <strong>{{ h.usuario_nome or 'Sistema' }}</strong> — {{ h.acao }}{% if h.detalhes %}<br><small>{{ h.detalhes }}</small>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="vazio">Sem registros.</p>{% endif %}
+</section>
+{% endblock %}

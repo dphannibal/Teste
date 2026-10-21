@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import situacao_selo with context %}
+{% block titulo %}Suspender / remarcar{% endblock %}
+{% block conteudo %}
+<h1>Suspender ou remarcar — {{ edital(lic) }}</h1>
+<p class="sutil">{{ lic.modalidade }} · {{ situacao_selo(lic) }} · Sessão: <strong>{{ lic.data_sessao|data if lic.data_sessao else 'a definir' }}</strong>.
+{% if fase == 'andamento' %}A sessão pública já foi aberta.{% else %}A sessão pública ainda não foi aberta.{% endif %}</p>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <fieldset>
+    <legend>O que aconteceu? *</legend>
+    {% for chave, o in opcoes.items() %}
+    <label class="opcao"><input type="radio" name="tipo" value="{{ chave }}" data-campo="{{ o.campo }}" {% if dados.tipo == chave %}checked{% endif %}>
+      <span><strong>{{ o.rotulo }}</strong> — {{ o.descricao }}</span></label>
+    {% endfor %}
+  </fieldset>
+  <label data-campo="suspensa_em">Data e hora da suspensão *<input type="datetime-local" name="suspensa_em" value="{{ dados.suspensa_em or '' }}"></label>
+  <label data-campo="nova_data">Nova data e hora da sessão *<input type="datetime-local" name="nova_data" value="{{ dados.nova_data or '' }}"></label>
+  <div data-tipo="remarcada_retificacao">
+    <label>Divulgação do edital retificado *<input type="date" name="data_retificacao" value="{{ dados.data_retificacao or '' }}">
+      <small>O prazo mínimo legal é contado de novo a partir desta data (art. 55, § 1º).</small></label>
+    <label class="opcao"><input type="checkbox" name="sem_novo_prazo" value="1" {% if dados.sem_novo_prazo %}checked{% endif %}> A alteração não compromete a formulação das propostas: não reabre o prazo</label>
+  </div>
+  <label>Motivo<textarea name="motivo" rows="3" placeholder="Ex.: impugnação do edital, análise dos documentos de habilitação, horário encerrado">{{ dados.motivo or '' }}</textarea></label>
+  {% if pontos %}
+  <div class="aviso aviso-alerta">
+    <label class="opcao"><input type="checkbox" name="confirmar_ponto_facultativo" value="1"> Haverá expediente no ponto facultativo: manter a sessão nesta data</label>
+  </div>
+  {% endif %}
+  {% if pendentes %}
+  <div class="aviso aviso-alerta">
+    <label class="opcao"><input type="checkbox" name="manter_impedidos" value="1"> Manter o membro impedido ({{ pendentes|map(attribute='nome')|join(', ') }}) na continuação — ou troque-o pela edição da licitação</label>
+  </div>
+  {% endif %}
+  <div class="acoes">
+    <button class="primario">Registrar</button>
+    <a href="{{ url_for('agenda.detalhe', id_=lic.id) }}">Cancelar</a>
+  </div>
+</form>
+<script>
+(function () {
+  function ajustar() {
+    var marcado = document.querySelector('input[name=tipo]:checked');
+    document.querySelectorAll('label[data-campo]').forEach(function (e) {
+      e.hidden = !marcado || e.dataset.campo !== marcado.dataset.campo;
+      e.querySelector('input').required = !e.hidden;
+    });
+    document.querySelectorAll('[data-tipo]').forEach(function (e) {
+      e.hidden = !marcado || e.dataset.tipo !== marcado.value;
+    });
+  }
+  document.querySelectorAll('input[name=tipo]').forEach(function (r) { r.addEventListener('change', ajustar); });
+  ajustar();
+})();
+</script>
+{% endblock %}

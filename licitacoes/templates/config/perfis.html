@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block titulo %}Permissões dos perfis{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <h1>Permissões dos perfis</h1>
+  <div class="acoes"><a href="{{ url_for('config.parametros') }}">Parâmetros do sistema</a></div>
+</div>
+<p class="sutil">Marque o que cada perfil pode fazer. O Administrador tem sempre todas as permissões e é o único que altera esta tela.</p>
+<form method="post" class="cartao">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <div class="tabela-rolagem">
+  <table class="matriz">
+    <thead><tr><th>Funcionalidade</th><th>{{ PERFIS['administrador'] }}</th>{% for p in editaveis %}<th>{{ PERFIS[p] }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for chave, descricao in permissoes.items() %}
+      <tr>
+        <td>{{ descricao }}</td>
+        <td class="centro"><input type="checkbox" checked disabled title="Sempre ativo para o Administrador"></td>
+        {% for p in editaveis %}
+          <td class="centro"><input type="checkbox" name="perm_{{ p }}" value="{{ chave }}" aria-label="{{ PERFIS[p] }}: {{ descricao }}" {% if chave in atuais.get(p, []) %}checked{% endif %}></td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="acoes"><button class="primario">Salvar permissões</button></div>
+</form>
+{% endblock %}

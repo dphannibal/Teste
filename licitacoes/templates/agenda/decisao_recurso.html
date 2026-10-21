@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block titulo %}Decisão do recurso{% endblock %}
+{% block conteudo %}
+<h1>Decisão do recurso — {{ edital(lic) }}</h1>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Data da decisão *<input type="date" name="decidido_em" required value="{{ dados.decidido_em or '' }}"></label>
+  <label>Resultado *
+    <select name="resultado" required><option value="">Selecione…</option>
+      {% for r in resultados %}<option {% if dados.resultado == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select></label>
+  <label>Situação da licitação após a decisão *
+    <select name="status" required>
+      {% for s in destinos %}<option value="{{ s.chave }}" {% if dados.status == s.chave %}selected{% endif %}>{{ s.nome }}</option>{% endfor %}
+    </select></label>
+  <label>Observação<textarea name="observacao" rows="2">{{ dados.observacao or '' }}</textarea></label>
+  <div class="acoes">
+    <button class="primario">Registrar decisão</button>
+    <a href="{{ url_for('agenda.detalhe', id_=lic.id) }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

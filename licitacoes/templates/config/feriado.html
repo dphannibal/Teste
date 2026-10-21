@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block titulo %}{{ 'Novo' if novo else 'Editar' }} feriado{% endblock %}
+{% block conteudo %}
+<h1>{{ 'Novo feriado ou ponto facultativo' if novo else 'Editar: ' ~ dados.nome }}</h1>
+<form method="post" class="cartao formulario estreito">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label>Nome *<input name="nome" required value="{{ dados.nome or '' }}" placeholder="Ex.: Ponto facultativo — véspera de Natal"></label>
+  <div class="grade">
+    <label>Tipo *<select name="tipo">{% for k, v in tipos.items() %}<option value="{{ k }}" {% if dados.tipo == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label>Abrangência *<select name="abrangencia">{% for k, v in abrangencias.items() %}<option value="{{ k }}" {% if dados.abrangencia == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+  </div>
+  <fieldset>
+    <legend>Quando ocorre *</legend>
+    {% for k, v in regras.items() %}<label class="opcao"><input type="radio" name="regra" value="{{ k }}" {% if dados.regra == k %}checked{% endif %}> {{ v }}</label>{% endfor %}
+    <div class="grade" data-regra="fixa">
+      <label>Dia<input type="number" name="dia" min="1" max="31" value="{{ dados.dia or '' }}"></label>
+      <label>Mês<input type="number" name="mes" min="1" max="12" value="{{ dados.mes or '' }}"></label>
+    </div>
+    <label data-regra="pascoa">Dias em relação ao domingo de Páscoa
+      <input type="number" name="deslocamento" value="{{ dados.deslocamento if dados.deslocamento is not none else '' }}">
+      <small>Ex.: Carnaval (terça) −47; Sexta-feira Santa −2; Corpus Christi 60.</small></label>
+    <label data-regra="data">Data<input type="date" name="data" value="{{ dados.data or '' }}"></label>
+  </fieldset>
+  <label>Observação / ato<input name="observacao" value="{{ dados.observacao or '' }}" placeholder="Ex.: Decreto municipal nº 123/2026"></label>
+  {% if not novo %}<label class="opcao"><input type="checkbox" name="ativo" value="1" {% if dados.ativo %}checked{% endif %}> Ativo</label>{% endif %}
+  <div class="acoes"><button class="primario">Salvar</button> <a href="{{ url_for('config.feriados') }}">Cancelar</a></div>
+</form>
+<script>
+(function () {
+  function ajustar() {
+    var r = document.querySelector('input[name=regra]:checked');
+    document.querySelectorAll('[data-regra]').forEach(function (e) { e.hidden = !r || e.dataset.regra !== r.value; });
+  }
+  document.querySelectorAll('input[name=regra]').forEach(function (e) { e.addEventListener('change', ajustar); });
+  ajustar();
+})();
+</script>
+{% endblock %}
